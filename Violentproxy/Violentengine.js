@@ -52,7 +52,7 @@ const engine = (localReq, localRes) => {
             default:
                 throw "Unexpected request result";
         }
-        //Proxy request
+        //Proxy request TODO: try-catch this, bad URL can crash the server
         const request = (options.protocol === "https:" ? https : http).request(options, (remoteRes) => {
             //remoteRes is http.IncomingMessage, which is also a Stream
             let data = [];
