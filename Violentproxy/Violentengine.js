@@ -1,19 +1,20 @@
 "use strict";
 
 //Load modules
-const http = require("http"),
-    https = require("https"),
+const https = require("https"),
+    http = require("http"),
     zlib = require("zlib"),
+    net = require("net"),
     url = require("url");
 
 /**
- * Proxy engine.
+ * Proxy engine for REQUEST (HTTP) request.
  * @function
  * @param {IncomingMessage} localReq - The local request object.
  * @param {ServerResponse} localRes - The local response object.
  */
 const engine = (localReq, localRes) => {
-    console.log(`Request received: ${localReq.url}`);
+    console.log(`REQUEST request received: ${localReq.url}`);
     //Prepare request
     let options
     try {
@@ -122,6 +123,19 @@ const engine = (localReq, localRes) => {
 };
 
 /**
+ * Proxy engine for CONNECT (HTTPS) requests.
+ * @param {any} localRes
+ * @param {any} localSocket
+ * @param {any} localHead
+ */
+const engines = (localRes, localSocket, localHead) => {
+    //TODO: https://newspaint.wordpress.com/2012/11/05/node-js-http-and-https-proxy/
+    //      https://nodejs.org/api/http.html#http_event_connect
+    console.log(`CONNECT request received: ${localReq.url}`);
+
+};
+
+/**
  * Process final request result and send it to client.
  * @param {http.ServerResponse} localRes - The object that can be used to respond client request.
  * @param {http.IncomingMessage} remoteRes - The object that contains data about server response.
@@ -146,8 +160,8 @@ const finalize = (localRes, remoteRes, url, responseText) => {
  * @function
  * @param {Object} config - The configuration object.
  ** {integer} [config.port=12345] - The port that the proxy server listens.
- ** {string} [config.rules="./rules.json"] - The path to the rule JSON.
  ** {Object} [cert=undefined] - The certificate for HTTPS mode. Leave undefined to use HTTP mode.
+ ** {boolean} [unsafe = false] - Whether HTTPS to HTTP proxy is allowed.
  */
 exports.start = (config) => {
     config = config || {};
@@ -157,11 +171,15 @@ exports.start = (config) => {
     let server;
     //Create server
     if (cert) {
-        server = https.createServer(cert, engine);
         console.log("Encryption enabled, don't forget to install the certificate");
-        //TODO: https://newspaint.wordpress.com/2012/11/05/node-js-http-and-https-proxy/
+        server = https.createServer(cert, engine);
+        server.on("connect", engines);
     } else {
         server = http.createServer(engine);
+        if (config.unsafe) {
+            console.log("Warning: HTTPS request will be downgraded to HTTP between user agent and Violentproxy");
+            server.on("connect", engines);
+        }
     }
     server.listen(port);
     console.log(`Violentproxy started on port ${port}`);
