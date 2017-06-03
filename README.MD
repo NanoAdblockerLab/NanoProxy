@@ -8,3 +8,5 @@ This project is not yet ready for use.
 It is a bare bone prototype, but it does start, try it out: `node ./Example.js`. 
 
 ![screenshot](http://i.imgur.com/itQBQjq.png)
+
+Please open an issue if there is something you want me to know. 
