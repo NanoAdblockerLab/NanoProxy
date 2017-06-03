@@ -149,7 +149,8 @@ const finalize = (localRes, remoteRes, url, responseText) => {
     //The length will be changed when it is patched, let the browser figure out how long it actually is
     //I can probably count that, I'll pass in an updated length if removing the header causes problems
     delete remoteRes.headers["content-length"];
-    localRes.writeHead(remoteRes.statusCode, remoteRes.statusMessage, remoteRes.headers); //TODO: Patch Content Security Policy to allow Userscript callback
+    //TODO: Patch Content Security Policy to allow Userscript callback
+    localRes.writeHead(remoteRes.statusCode, remoteRes.statusMessage, remoteRes.headers);
     //TODO: Pass better stuff to the patching provider
     localRes.write(text);
     localRes.end();
@@ -200,7 +201,8 @@ exports.requestResult = {
  * Request patching provider.
  * This function can modify a request. Override this function to install your provider.
  * @var {Function}
- * @param {Object} headers - The headers of the request, passed over by reference and changes will be reflected. "accept-encoding" cannot be changed as it wil causes parsing issues.
+ * @param {Object} headers - The headers of the request, passed over by reference and changes will be reflected.
+ ** "accept-encoding" cannot be changed as it wil causes parsing issues.
  * @param {string} url - The destination of the request.
  * @return {Object}
  ** {Enumeration} result - The request patching result.
@@ -217,11 +219,15 @@ exports.requestPatchingProvider = (headers, url) => {
 };
 
 /**
- * Page patching provider.
+ * Response patching provider.
  * This function can modify a server response. Override this function to install your provider.
  * @var {Function}
- * @param {Object} headers - The headers of the response, passed over by reference and changes will be reflected. "content-encoding" and "content-length" cannot be changed as it wil causes parsing issues.
+ * @param {Object} headers - The headers of the response, passed over by reference and changes will be reflected.
+ ** "content-encoding" and "content-length" cannot be changed as it wil causes parsing issues.
  * @param {string} url - The destination of the request.
+ * @param {string} [text=undefined] - If defined, return value will be sent back to client instead,
+ ** this may be undefined if the request is not text. Header patching will always be accepted.
+ ** Be aware that if text is defined, and nothing is returned, then client will recive an empty body.
  * @return {string} The patched response text.
  */
 exports.responsePatchingProvider = (headers, url, text) => {
@@ -229,7 +235,9 @@ exports.responsePatchingProvider = (headers, url, text) => {
     void headers;
     void url;
     //This is just an example
-    return text.replace(/(<head[^>]*>)/i, "$1" + `<script>console.log("Hello from Violentproxy :)");</script>`);
+    if (text) {
+        return text.replace(/(<head[^>]*>)/i, "$1" + `<script>console.log("Hello from Violentproxy :)");</script>`);
+    }
 };
 
 //Handle server crash
