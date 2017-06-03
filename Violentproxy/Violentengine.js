@@ -155,6 +155,7 @@ exports.start = (config) => {
     //Create server
     if (cert) {
         server = https.createServer(cert, engine);
+        console.log("HTTPS enabled");
     } else {
         server = http.createServer(engine);
     }
