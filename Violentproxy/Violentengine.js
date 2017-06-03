@@ -155,7 +155,7 @@ exports.start = (config) => {
     //Create server
     if (cert) {
         server = https.createServer(cert, engine);
-        console.log("HTTPS enabled");
+        console.log("Encryption enabled, don't forget to install the certificate");
         //TODO: https://newspaint.wordpress.com/2012/11/05/node-js-http-and-https-proxy/
     } else {
         server = http.createServer(engine);
