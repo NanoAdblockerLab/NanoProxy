@@ -4,28 +4,23 @@
 const http = require("http"),
     https = require("https"),
     zlib = require("zlib"),
-    url = require("url"),
-    fs = require("fs");
-
-//Config variables, will be set later
-let port, cert;
-let server;
+    url = require("url");
 
 /**
  * Proxy engine.
  * @function
- * @param {http.IncomingMessage} localReq - The local request object.
- * @param {http.ServerResponse} localRes - The local response object.
+ * @param {IncomingMessage} localReq - The local request object.
+ * @param {ServerResponse} localRes - The local response object.
  */
 const engine = (localReq, localRes) => {
-    console.log(`Received request: ${localReq.url}`);
-    //Process header so response from remote server can be parsed
-    localReq.headers["accept-encoding"] = "gzip, deflate";
+    console.log(`Request received: ${localReq.url}`);
     //Prepare request
     let options = url.parse(localReq.url);
     options.headers = localReq.headers;
     //Handle internal request loop
-    if (!localReq.url.startsWith("http")) { //TODO: Change this to handle privileged Userscript functions
+    //As I can't easily find out what is my common name, the first proxied request will backloop internally
+    //This isn't the most efficient way to handle it, but should be good enough if Userscripts don't spam the API
+    if (!localReq.url.startsWith("http")) { //TODO: Change this to handle Userscripts API
         localRes.writeHead(400, "Bad Request", {
             "Content-Type": "text/plain",
             "Server": "Violentproxy Proxy Server",
@@ -33,11 +28,13 @@ const engine = (localReq, localRes) => {
         localRes.write("The request that Violentproxy received is not valid because it would cause internal request loop.");
         localRes.end();
     } else {
-        //Check request blocking and redirecting
-        const requestResult = exports.requestPatchingProvider("", "", "", ""); //TODO: pass in better stuff
+        //Patch the request
+        const requestResult = exports.requestPatchingProvider(localReq.headers, localReq.url);
+        //Further process headers so response from remote server can be parsed
+        localReq.headers["accept-encoding"] = "gzip, deflate";
         switch (requestResult.result) {
             case exports.requestResult.Allow:
-                //Do nothing
+                //Do nothing, let the request pass
                 break;
             case exports.requestResult.Empty:
                 localRes.writeHead(200, "OK", {
@@ -76,12 +73,12 @@ const engine = (localReq, localRes) => {
                             localRes.write("Violentproxy could not complete your request because there is a data stream parsing error.");
                             localRes.end();
                         } else {
-                            finalize(localRes, remoteRes, result.toString());
+                            finalize(localRes, remoteRes, localReq.url, result.toString()); //TODO: what about images? 
                         }
                     });
                 } else {
                     //Assume identity
-                    finalize(localRes, remoteRes, data.toString());
+                    finalize(localRes, remoteRes, localReq.url, data.toString()); //TODO: what about images? 
                 }
             });
             remoteRes.on("error", () => {
@@ -114,16 +111,19 @@ const engine = (localReq, localRes) => {
  * Process final request result and send it to client.
  * @param {http.ServerResponse} localRes - The object that can be used to respond client request.
  * @param {http.IncomingMessage} remoteRes - The object that contains data about server response.
+ * @param {string} url - The request URL.
  * @param {string} responseText - The response text.
  */
-const finalize = (localRes, remoteRes, responseText) => {
-    remoteRes.headers["content-encoding"] = "identity"; //So I don't need to encode it again
+const finalize = (localRes, remoteRes, url, responseText) => {
+    const text = exports.responsePatchingProvider(remoteRes.headers, url, responseText);
+    //So I don't need to encode it again
+    remoteRes.headers["content-encoding"] = "identity";
     //The length will be changed when it is patched, let the browser figure out how long it actually is
     //I can probably count that, I'll pass in an updated length if removing the header causes problems
     delete remoteRes.headers["content-length"];
     localRes.writeHead(remoteRes.statusCode, remoteRes.statusMessage, remoteRes.headers); //TODO: Patch Content Security Policy to allow Userscript callback
     //TODO: Pass better stuff to the patching provider
-    localRes.write(exports.responsePatchingProvider("", "", "", responseText, ""));
+    localRes.write(text);
     localRes.end();
 };
 
@@ -137,9 +137,10 @@ const finalize = (localRes, remoteRes, responseText) => {
  */
 exports.start = (config) => {
     config = config || {};
-    //Load config
-    port = config.port || 12345;
-    cert = config.cert;
+    //Load configuration
+    const port = config.port || 12345;
+    const cert = config.cert;
+    let server;
     //Create server
     if (cert) {
         server = https.createServer(cert, engine);
@@ -150,51 +151,59 @@ exports.start = (config) => {
     console.log(`Violentproxy started on port ${port}`);
 };
 
-//=====Providers=====
-
 /**
  * Request patching results.
  * @const {Enumeration}
  */
 exports.requestResult = {
     Allow: 0, //Do nothing, let the request pass
-    Empty: 1, //Stop the request and return HTTP 200 with empty response
+    Empty: 1, //Stop the request and return HTTP 200 with empty response body
     Deny: 2, //TODO: Reject the request
     Redirect: 3, //TODO: Redirect the request to another address or to a local resource
-    //TODO: Bind special patching provider (?)
 };
 
 /**
  * Request patching provider.
- * This function can reject or redirect a request.
- * @function
- * @param {string} referee - The referee of the request (if it exists).
- * @param {string} domain - The domain of the response.
- * @param {string} path - The path of the response.
- * @param {string} type - The type of the response.
+ * This function can modify a request. Override this function to install your provider.
+ * @var {Function}
+ * @param {Object} headers - The headers of the request, passed over by reference and changes will be reflected. "accept-encoding" cannot be changed as it wil causes parsing issues.
+ * @param {string} url - The destination of the request.
  * @return {Object}
  ** {Enumeration} result - The request patching result.
- ** TODO: Extra information as appropriate. (header patching, special information for the result)
+ ** {Any} extra - Appropriate extra information for the request patching result.
  */
-exports.requestPatchingProvider = (referee, domain, path, type) => {
-    return { result: exports.requestResult.Allow };
+exports.requestPatchingProvider = (headers, url) => {
+    //These parameters are not used
+    void headers;
+    //This is just an example
+    return {
+        result: exports.requestResult.Allow,
+        extra: null,
+    };
 };
 
 /**
  * Page patching provider.
- * This function can modify a server response
- * @function
- * @param {string} referee - The referee of the request (if it exists).
- * @param {string} domain - The domain of the response.
- * @param {string} path - The path of the response.
- * @param {string} text - The response text.
- * @param {string} type - The type of the response.
+ * This function can modify a server response. Override this function to install your provider.
+ * @var {Function}
+ * @param {Object} headers - The headers of the response, passed over by reference and changes will be reflected. "content-encoding" and "content-length" cannot be changed as it wil causes parsing issues.
+ * @param {string} url - The destination of the request.
  * @return {string} The patched response text.
  */
-exports.responsePatchingProvider = (referee, domain, path, text, type) => {
-    void domain;
-    void path;
-    void type;
+exports.responsePatchingProvider = (headers, url, text) => {
+    //These parameters are not used
+    void headers;
+    void url;
     //This is just an example
     return text.replace(/(<head[^>]*>)/i, "$1" + `<script>console.log("Hello from Violentproxy :)");</script>`);
 };
+
+//Handle server crash
+process.on("uncaughtException", (err) => {
+    console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    console.log("!!!!!Violentproxy encountered a fatal error and is about to crash!!!!!");
+    console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    console.log("More information will soon be printed to the screen.");
+    console.log("Our support page: https://github.com/Violentproxy/Violentproxy/issues");
+    throw err;
+});
