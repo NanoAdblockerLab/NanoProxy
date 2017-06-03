@@ -46,7 +46,7 @@ const engine = (localReq, localRes) => {
             case exports.requestResult.Empty:
                 localRes.writeHead(200, "OK", {
                     "Content-Type": "text/plain", //TODO: Dynamically determine this
-                    "Server": "Violentproxy Proxy Server",
+                    "Server": "Violentproxy Proxy Server", //TODO: mock as something more believable (?)
                 });
                 localRes.end();
                 return; //Stop here
