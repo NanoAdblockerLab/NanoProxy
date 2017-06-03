@@ -23,7 +23,10 @@ const engine = (localReq, localRes) => {
         localRes.destroy();
         return;
     }
+    //Pass through some arguments
     options.headers = localReq.headers;
+    options.agent = localReq.agent;
+    options.auth = localReq.auth;
     //Handle internal request loop
     //As I can't easily find out what is my common name, the first proxied request will backloop internally
     //This isn't the most efficient way to handle it, but should be good enough if Userscripts don't spam the API
