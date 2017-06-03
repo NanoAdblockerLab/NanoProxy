@@ -118,6 +118,9 @@ const engine = (localReq, localRes) => {
  */
 const finalize = (localRes, remoteRes, responseText) => {
     remoteRes.headers["content-encoding"] = "identity"; //So I don't need to encode it again
+    //The length will be changed when it is patched, let the browser figure out how long it actually is
+    //I can probably count that, I'll pass in an updated length if removing the header causes problems
+    delete remoteRes.headers["content-length"];
     localRes.writeHead(remoteRes.statusCode, remoteRes.statusMessage, remoteRes.headers); //TODO: Patch Content Security Policy to allow Userscript callback
     //TODO: Pass better stuff to the patching provider
     localRes.write(exports.responsePatchingProvider("", "", "", responseText, ""));
