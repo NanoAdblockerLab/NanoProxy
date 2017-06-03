@@ -15,7 +15,14 @@ const http = require("http"),
 const engine = (localReq, localRes) => {
     console.log(`Request received: ${localReq.url}`);
     //Prepare request
-    let options = url.parse(localReq.url);
+    let options
+    try {
+        options = url.parse(localReq.url);
+    } catch (err) {
+        //This is a bad request, but to prevent proxy detection, I'll just drop the connection
+        localRes.destroy();
+        return;
+    }
     options.headers = localReq.headers;
     //Handle internal request loop
     //As I can't easily find out what is my common name, the first proxied request will backloop internally
@@ -52,8 +59,8 @@ const engine = (localReq, localRes) => {
             default:
                 throw "Unexpected request result";
         }
-        //Proxy request TODO: try-catch this, bad URL can crash the server
-        const request = (options.protocol === "https:" ? https : http).request(options, (remoteRes) => {
+        //Proxy request
+        let request = (options.protocol === "https:" ? https : http).request(options, (remoteRes) => {
             //remoteRes is http.IncomingMessage, which is also a Stream
             let data = [];
             remoteRes.on("data", (chunk) => {
@@ -100,6 +107,10 @@ const engine = (localReq, localRes) => {
                 localRes.write("Violentproxy could not complete your request because remote server closed the connection.");
                 localRes.end();
             });
+        });
+        request.on("error", () => {
+            //This can error out if the address is not valid
+            localRes.destroy();
         });
         request.end();
         //Abort request when local client disconnects
