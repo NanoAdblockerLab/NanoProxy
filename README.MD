@@ -5,7 +5,7 @@ it has different restrictions and can possibly work together with Violentmonkey 
 
 This project is not yet ready for use. 
 
-It is a bare bone prototype, but it does start, try it out: `node ./Example.js`. 
+It is a bare bone prototype, but it does start, try it out: `node "./HTTP Proxy.js"`. 
 
 ![screenshot](http://i.imgur.com/itQBQjq.png)
 
