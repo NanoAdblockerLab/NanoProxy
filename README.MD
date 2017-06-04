@@ -8,7 +8,7 @@ There are quite a few technical difficulties that needs to be resolved before it
 More documentation will be available later when everything is ready. It doesn't handle HTTP properly neither, 
 it is far from being ready for even beta test. 
 
-It is currently a bare bone prototype, but it should start, try it out: `node demo.js`. 
+But hey, it does start, try it out: `node demo.js`. 
 
 ![screenshot](http://i.imgur.com/itQBQjq.png)
 
