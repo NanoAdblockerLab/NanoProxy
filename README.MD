@@ -13,3 +13,5 @@ But hey, it does start, try it out: `node demo.js`.
 ![screenshot](http://i.imgur.com/itQBQjq.png)
 
 Please open an issue if there is something you want me to know. 
+
+I probably should make this based on mitmproxy, but Python is missing a digit in performance compared to JavaScript. 
