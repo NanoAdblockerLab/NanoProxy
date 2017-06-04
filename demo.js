@@ -1,7 +1,7 @@
 "use strict";
 
-//Start a simple HTTP-only proxy server, it will inject an inline script that write something to the console to all pages that has <head> tag
-//Not very useful
+//Start a simple HTTP-only proxy server, it will inject an inline script that write something
+//to the console to all pages that has <head> tag. Just a demo, not very useful.
 require("../Violentproxy/Violentengine").start();
 
 console.log("Does it work? Test it out: curl -x localhost:12345 example.com");
