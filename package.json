@@ -6,7 +6,7 @@
   "dependencies": {
     "node-forge": ">=0.7.1"
   },
-  "description": "A free and open source implementation of proxy engine for adblockers and Userscript hosts.",
+  "description": "A free and open source implementation of proxy engine for Userscript hosts and adblockers.",
   "engines": {
     "node": ">=8.0.0"
   },
