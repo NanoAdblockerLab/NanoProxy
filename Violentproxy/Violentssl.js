@@ -52,8 +52,12 @@ const CAattr = [
  */
 const CAext = [
     {
-
+        name: "basicConstraints", //B.3.3.
+        cA: true,
     },
+    {
+
+    }
 ];
 
 /**

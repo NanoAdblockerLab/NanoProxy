@@ -5,8 +5,8 @@ const https = require("https"),
     http = require("http"),
     zlib = require("zlib"),
     net = require("net"),
-    url = require("url"),
-    ws = require("ws"); //WebSocket
+    url = require("url");
+    //ws = require("ws"); //WebSocket
 
 /**
  * Proxy engine for REQUEST (HTTP) request.
