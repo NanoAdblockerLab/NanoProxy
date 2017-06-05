@@ -1,7 +1,7 @@
 # Violentproxy
 
 Named after [Violentmonkey](https://github.com/violentmonkey/violentmonkey), 
-Violentproxy aims at doing the same monkey things but in a different way, 
+Violentproxy is a monkey-in-the-middle proxy that aims at doing the same monkey things but in a different way, 
 it has different restrictions and can possibly work together with Violentmonkey to create a better Userscirpt experience. 
 
 There are quite a few technical difficulties that needs to be resolved before it can handle HTTPS and WebSocket. 
