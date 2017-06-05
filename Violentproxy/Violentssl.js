@@ -1,32 +1,31 @@
 "use strict";
 
 /**
- * I will use node-forge, as spawning a child-process every time I need to sign a certificate might not be faster.
- * Calling OpenSSL through Bash on Ubuntu on Windows fells like too big an overhead to me.
- * The newest version of OpenSSL in Bash on Ubuntu on Windows also has a few CVE vulnerabilities.
- * That can be manually resolved, but it's too much work to get too little done, and most people
- * won't be confortable working in a terminal.
+ * Load necessary modules.
+ * I will use node-forge, as spawning a child-process every time I need to sign a certificate isn't really going
+ * to be faster.
+ * Also, OpenSSL is a pain to get it to work on Windows.
  * @const {Module}
  */
-const {pki, md} = require("node-forge"),
+const forge = require("node-forge"),
     fs = require("fs");
 
 /**
  * The certificate and its key. Will be initialized later.
  * @const {Certificate}
  */
-let CAcert, CAkey;
+let CAcert, CAprivate, CApublic;
 /**
  * Server certificates cache.
  * Will be a dictionary of domain to certificate. The certificate object can be passed directly to https.createServer().
- * @var {Object.<Certificate>}
+ * @var {Dictionary.<Certificate>}
  */
 let certCache = {};
 
 /**
  * Certificate authority subject.
  * https://stackoverflow.com/questions/6464129/certificate-subject-x-509
- * @const {Object}
+ * @const {CASubject}
  */
 const CAsbj = [
     {
@@ -58,7 +57,7 @@ const CAsbj = [
 /**
  * Certificate authority extensions.
  * https://access.redhat.com/documentation/en-US/Red_Hat_Certificate_System/8.0/html/Admin_Guide/Standard_X.509_v3_Certificate_Extensions.html
- * @const {Object}
+ * @const {CAExtensions}
  */
 const CAext = [
     {
@@ -112,7 +111,8 @@ const CAext = [
 ];
 /**
  * Server subject, same for all servers, refer to certificate authority subject for more information.
- * @const {Object}
+ * This can be the same for all servers because browsers don't care abut CN (common name) anymore and only check subjectAltName.
+ * @const {ServerSubject}
  */
 const serverSbj = [
     //As browsers don't care about CN anymore, I will drop it and use the same subject for all servers
@@ -139,29 +139,81 @@ const serverSbj = [
     },
 ];
 /**
- * Get server extension. This cannot be a static global object as I might be signing two certificates at the same
- * time and the extension is slightly different for each server.
- * @const {Object}
+ * Get server extension. This cannot be a single global variable as I might be processing two certificates at the
+ * same time and the extension is slightly different for each server. The signing process is synchronous but I don't
+ * want to deal with potential race conditions.
+ * Refer to certificate authority extensions for more information.
+ * @function
+ * @param {stirng} domain - The domain, include wildcard as appropriate.
+ * @return {ServerExtensions} Server extensions.
  */
-const getServerExt = () => {
-
-}
+const getServerExt = (domain) => {
+    return [
+        {
+            name: "extKeyUsage",
+            serverAuth: true,
+            clientAuth: true,
+        },
+        {
+            name: "keyUsage",
+            digitalSignature: true,
+            keyEncipherment: true,
+            dataEncipherment: true,
+        },
+        {
+            name: "subjectAltName",
+            altNames: [
+                {
+                    type: 2, //DNS Name, domain
+                    value: domain,
+                },
+            ],
+        },
+        {
+            name: "nsCertType",
+            client: true,
+            server: true,
+        },
+    ];
+};
 
 /**
- * Initialize certificate authority, calling sign without calling this function first
+ * Generate a certificate authority, data will be written to global variables.
+ * Callback will be called when the certificate is ready, saving them to file will be done right after.
+ * @function
+ * @param {Function} callback - The function to call when the certificate authority is ready.
+ */
+const genCA = (callback) => {
+    //Make the certificate to be valid from yesterday, for a month
+    //I might make this longer when I feel it is stable enough
+    let startDate = new Date();
+    startDate.setDate(startDate.getDate() - 1); //This will work if today is the first day of a month
+    let endDate = new Date(); //Need to create a new one
+    //The behavior of this is kind of weird when it comes to February, but it's good enough, it's just temporary anyway
+    endDate.setMonth(endDate.getMonth() + 1);
+    //endDate.setFullYear(endDate.getFullYear() + 1);
+    //
+    forge.pki.a
+};
+
+/**
+ * Initialize certificate authority, calling sign() without calling this function first
  * will cause problems. This function will throw if the certificate authority could
  * not be initialized.
  * @function
+ * @param {Funciton} callback - The function to call when Violentssl is ready.
  */
-exports.init = () => {
+exports.init = (callback) => {
+    //Check if I already have them
 
 };
 
 /**
  * Get a certificate for the current domain, do not pass in domain with wildcard.
  * @function
- * @return {Object} An object that can be passed to https.createServer().
+ * @param {Function} callback - The function to call when the certificate is ready.
+ ** @param {Certificate} - An object that can be passed to https.createServer().
  */
-exports.sign = (domain) => {
+exports.sign = (domain, callback) => {
 
 };
