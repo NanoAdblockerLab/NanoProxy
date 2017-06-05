@@ -1,0 +1,22 @@
+{
+  "author": "jspenguin2017",
+  "bugs": {
+    "url": "https://github.com/Violentproxy/Violentproxy/issues"
+  },
+  "dependencies": {
+
+  },
+  "description": "A free and open source implementation of proxy engine for adblockers and Userscript hosts.",
+  "engines": {
+    "node": ">=8.0.0"
+  },
+  "homepage": "https://github.com/Violentproxy/Violentproxy",
+  "license": "GNU GPL v3",
+  "main": "demo.js",
+  "name": "violentproxy",
+  "repository": "https://github.com/Violentproxy/Violentproxy",
+  "scripts": {
+    "start": "node demo.js"
+  },
+  "version": "0.0.1"
+}
