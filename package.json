@@ -4,9 +4,9 @@
     "url": "https://github.com/Violentproxy/Violentproxy/issues"
   },
   "dependencies": {
-    "node-forge": ">=0.7.1"
+    "node-forge": "^0.7.1"
   },
-  "description": "A free and open source implementation of proxy engine for Userscript hosts and adblockers.",
+  "description": "A free and open source implementation of proxy engine for Userscript hosts and content blockers.",
   "engines": {
     "node": ">=8.0.0"
   },
