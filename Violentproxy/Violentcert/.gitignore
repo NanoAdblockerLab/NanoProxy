@@ -1,0 +1,6 @@
+# Prevent committing certificates
+
+*
+
+!.gitignore
+!README.MD
