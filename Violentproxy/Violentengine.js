@@ -5,7 +5,8 @@ const https = require("https"),
     http = require("http"),
     zlib = require("zlib"),
     net = require("net"),
-    url = require("url");
+    url = require("url"),
+    ws = require("ws"); //WebSocket
 
 /**
  * Proxy engine for REQUEST (HTTP) request.
@@ -32,7 +33,8 @@ const engine = (localReq, localRes) => {
     //Handle internal request loop
     //As I can't easily find out what is my common name, the first proxied request will backloop internally
     //This isn't the most efficient way to handle it, but should be good enough if Userscripts don't spam the API
-    if (!localReq.url.startsWith("http")) { //TODO: Change this to handle Userscripts API
+    if (!localReq.url[0] === "/") {
+        //TODO: Change this to handle Userscripts API
         localRes.writeHead(400, "Bad Request", {
             "Content-Type": "text/plain",
             "Server": "Violentproxy Proxy Server",
@@ -74,7 +76,7 @@ const engine = (localReq, localRes) => {
             remoteRes.on("end", () => {
                 data = Buffer.concat(data);
                 //Decode response
-                const encoding = remoteRes.headers["content-encoding"];
+                const encoding = remoteRes.headers["content-encoding"].toLowerCase();
                 if (encoding === "gzip" || encoding === "deflate") {
                     zlib.unzip(data, (err, result) => {
                         if (err) {
@@ -150,6 +152,9 @@ const engines = (localReq, localSocket, localHead) => {
     //problem for "standard" software, but it can slow down the connection by quite a bit.
     //There is no easy way to determine whether a request is XMLHttpRequest, but maybe I can inject some script to inform me to use
     //socket for subsequent requests.
+    //In order to intercept the request, I need to sign a certificate then start a HTTPS server, which can be an expensive process.
+    //For sites the user frequet, I can cache the certificates, as long as the user doesn't visite hundreds of different sites,
+    //it should be OK on modern devices.
 
     //Connect using socket
     //const remoteSocket = new net.Socket();
