@@ -11,6 +11,12 @@ const forge = require("node-forge"),
     fs = require("fs");
 
 /**
+ * The place where all certificates will be saved.
+ * @const {String}
+ */
+const certFolter = "./Violentproxy/Violentcert";
+
+/**
  * The certificate and its key. Will be initialized later.
  * @const {Certificate}
  */
@@ -179,11 +185,12 @@ const getServerExt = (domain) => {
 
 /**
  * Generate a certificate authority, data will be written to global variables.
- * Callback will be called when the certificate is ready, saving them to file will be done right after.
+ * Certificates will also be saved to a file.
  * @function
  * @param {Function} callback - The function to call when the certificate authority is ready.
  */
 const genCA = (callback) => {
+    console.log("Creating certificate authority...");
     //Make the certificate to be valid from yesterday, for a month
     //I might make this longer when I feel it is stable enough
     let startDate = new Date();
@@ -193,7 +200,77 @@ const genCA = (callback) => {
     endDate.setMonth(endDate.getMonth() + 1);
     //endDate.setFullYear(endDate.getFullYear() + 1);
     //
-    forge.pki.a
+    forge.pki.rsa.generateKeyPair({ bits: 2048 }, (err, keypair) => {
+        //Abort on error
+        if (err) {
+            console.log("ERROR: Could not create RSA key pair for certificate authority.");
+            throw err;
+        }
+        //Save keys
+        CAprivate = keypair.privateKey;
+        CApublic = keypair.publicKey;
+        //Create certificate
+        CAcert = forge.pki.createCertificate();
+        CAcert.validity.notBefore = startDate;
+        CAcert.validity.notAfter = endDate;
+        CAcert.setIssuer(CAsbj);
+        CAcert.setSubject(CAsbj);
+        CAcert.setExtensions(CAext);
+        CAcert.publicKey = CApublic;
+        //Signing defaults to SHA1, which is not good anymore
+        //https://github.com/digitalbazaar/forge/blob/80c7fd4e21ae83fa236ebb6a2f4748d54aa0dec0/lib/x509.js#L1032
+        CAcert.sign(CAprivate, forge.md.sha256.create());
+        //Write certificate to file
+        let done = 0;
+        const onDone = () => {
+            console.log("Certificate authority created, don't forget to install it.");
+            console.log(`The certificate is located at ${certFolter}/Violentca.crt`);
+            callback();
+        };
+        const onTick = (err) => {
+            if (err) {
+                console.log("ERROR: Could not save certificate authority.");
+                throw err;
+            } else {
+                (++done === 3) && onDone();
+            }
+        };
+        //I'll write all 3 files together
+        fs.writeFile(`${certFolter}/Violentca.crt`, forge.pki.certificateToPem(CAcert), onTick);
+        fs.writeFile(`${certFolter}/Violentca.public`, forge.pki.publicKeyToPem(CApublic), onTick);
+        fs.writeFile(`${certFolter}/Violentca.private`, forge.pki.privateKeyToPem(CAprivate), onTick);
+    });
+};
+/**
+ * Load certificate authority. This function assumes the file loaded is valid.
+ * @function
+ * @param {Function} callback - The function to call when it is done.
+ ** @param {boolean} result - True if successful, false otherwise.
+ */
+const loadCA = (callback) => {
+    //Variable naming is safe since this function will abort on the first error
+    fs.readFile(`${certFolter}/Violentca.crt`, (err, data) => {
+        if (err) {
+            callback(false);
+            return;
+        }
+        CAcert = forge.pki.certificateFromPem(data);
+        fs.readFile(`${certFolter}/Violentca.public`, (err, data) => {
+            if (err) {
+                callback(false);
+                return;
+            }
+            CApublic = forge.pki.publicKeyFromPem(data);
+            fs.readFile(`${certFolter}/Violentca.private`, (err, data) => {
+                if (err) {
+                    callback(false);
+                    return;
+                }
+                CAprivate = forge.pki.privateKeyFromPem(data);
+                callback(true);
+            });
+        });
+    });
 };
 
 /**
@@ -204,8 +281,24 @@ const genCA = (callback) => {
  * @param {Funciton} callback - The function to call when Violentssl is ready.
  */
 exports.init = (callback) => {
-    //Check if I already have them
-
+    loadCA((result) => {
+        if (result) {
+            //Successful
+            //I still need to check if it is going to expire, 2 days should be safe
+            let line = new Date();
+            line.setDate(line.getDate() + 2);
+            if (line > CAcert.validity.notAfter) {
+                //Generate new one
+                genCA(callback);
+            } else {
+                //All good
+                callback();
+            }
+        } else {
+            //Generate new one
+            genCA(callback);
+        }
+    });
 };
 
 /**

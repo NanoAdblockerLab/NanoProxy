@@ -1,12 +1,19 @@
 "use strict";
 
-//Load modules
+/**
+ * Load network modules.
+ * @const {Module}
+ */
 const https = require("https"),
     http = require("http"),
-    zlib = require("zlib"),
     net = require("net"),
     url = require("url");
-    //ws = require("ws"); //WebSocket
+/**
+ * Load other modules
+ * @const {Module}
+ */
+const zlib = require("zlib"),
+    ssl = require("./Violentssl");
 
 /**
  * Proxy engine for REQUEST (HTTP) request.
@@ -197,29 +204,29 @@ exports.start = (config) => {
     config = config || {};
     //Load configuration
     const port = config.port || 12345;
-    const cert = config.cert;
+    const useSSL = config.useSSL || false;
     let server;
     //Create server
-    if (cert) {
-        console.log("Encryption enabled, don't forget to install the certificate");
-        server = https.createServer(cert, engine);
-        server.on("connect", engines);
+    if (useSSL) {
+        console.log("Loading certificate authority...");
+        ssl.init(() => {
+            server = https.createServer(ssl.sign("localhost"), engine); //Still handle REQUEST the same way
+            server.on("connect", engines); //Handle CONNECT
+            server.listen(port);
+            console.log(`Violentproxy started on port ${port}, SSL is enabled.`);
+        });
     } else {
-        server = http.createServer(engine);
-        if (config.unsafe) {
-            console.log("Warning: HTTPS request will be downgraded to HTTP between user agent and Violentproxy");
-            server.on("connect", engines);
-        }
+        server = http.createServer(engine); //Only handle REQUEST
+        server.listen(port);
+        console.log(`Violentproxy started on port ${port}, SSL is disabled.`);
     }
-    server.listen(port);
-    console.log(`Violentproxy started on port ${port}`);
 };
 
 /**
  * Request patching results.
  * @const {Enumeration}
  */
-exports.requestResult = {
+exports.RequestResult = {
     Allow: 0, //Do nothing, let the request pass
     Empty: 1, //Stop the request and return HTTP 200 with empty response body
     Deny: 2, //TODO: Reject the request
@@ -227,19 +234,20 @@ exports.requestResult = {
 };
 
 /**
- * REQUEST request patching provider.
- * This function can modify a REQUEST request. Override this function to install your provider.
+ * Request patcher.
  * @var {Function}
- * @param {Object} headers - The headers of the request, passed over by reference and changes will be reflected.
- ** "accept-encoding" cannot be changed as it wil causes parsing issues.
- * @param {string} url - The destination of the request.
- * @return {Object}
- ** {Enumeration} result - The request patching result.
- ** {Any} extra - Appropriate extra information for the request patching result.
+ * @param {URL} source - The referrer URL, if exist. Undefined will be passed if it doesn't exist.
+ * @param {URL} destination - The requested URL.
+ * @return {RequestResult} The decision.
+ ** An URL object contains:
+ ** @const {string} domain - The domain of the URL, this is provided for convenience and performance.
+ ** @const {string} path - The path of the URL, this is provided for convenience and performance.
+ ** @const {string} fullURL - The full URL.
  */
-exports.requestRequestPatchingProvider = (headers, url) => {
+exports.requestPatcher = (source, destination) => {
     //These parameters are not used
-    void headers;
+    void source;
+    void destination;
     //This is just an example
     return {
         result: exports.requestResult.Allow,
@@ -248,21 +256,20 @@ exports.requestRequestPatchingProvider = (headers, url) => {
 };
 
 /**
- * REQUEST response patching provider.
- * This function can modify a REQUEST response from remote server. Override this function to install your provider.
+ * Response patcher.
  * @var {Function}
- * @param {Object} headers - The headers of the response, passed over by reference and changes will be reflected.
- ** "content-encoding" and "content-length" cannot be changed as it wil causes parsing issues.
- * @param {string} url - The destination of the request.
- * @param {string} [text=undefined] - If defined, return value will be sent back to client instead,
- ** this may be undefined if the request is not text. Header patching will always be accepted.
- ** Be aware that if text is defined, and nothing is returned, then client will recive an empty body.
+ * @param {URL} source - The referrer URL, if exist. Undefined will be passed if it doesn't exist.
+ * @param {URL} destination - The requested URL.
  * @return {string} The patched response text.
+ ** An URL object contains:
+ ** @const {string} domain - The domain of the URL, this is provided for convenience and performance.
+ ** @const {string} path - The path of the URL, this is provided for convenience and performance.
+ ** @const {string} fullURL - The full URL.
  */
-exports.requestResponsePatchingProvider = (headers, url, text) => {
+exports.responsePatcher = (source, destination, text) => {
     //These parameters are not used
-    void headers;
-    void url;
+    void source;
+    void destination;
     //This is just an example
     if (text) {
         return text.replace(/(<head[^>]*>)/i, "$1" + `<script>console.log("Hello from Violentproxy :)");</script>`);
@@ -274,7 +281,6 @@ process.on("uncaughtException", (err) => {
     console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     console.log("!!!!!Violentproxy encountered a fatal error and is about to crash!!!!!");
     console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    console.log("More information will soon be printed to the screen.");
-    console.log("Our support page: https://github.com/Violentproxy/Violentproxy/issues");
+    console.log("If you believe this is a bug, please inform us at https://github.com/Violentproxy/Violentproxy/issues");
     throw err;
 });
