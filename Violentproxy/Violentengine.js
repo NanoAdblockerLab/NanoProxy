@@ -1,3 +1,4 @@
+//Core engine for Violentproxy
 "use strict";
 
 /**
@@ -13,10 +14,11 @@ const https = require("https"),
  * @const {Module}
  */
 const zlib = require("zlib"),
-    ssl = require("./Violentssl");
+    ssl = require("./Violentssl"),
+    us = require("./Violentscript");
 
 /**
- * Proxy engine for REQUEST (HTTP) request.
+ * Proxy engine for REQUEST request.
  * @function
  * @param {IncomingMessage} localReq - The local request object.
  * @param {ServerResponse} localRes - The local response object.
@@ -239,10 +241,20 @@ exports.start = (config) => { //TODO: This is completely broken now...
  * @const {Enumeration}
  */
 exports.RequestResult = {
-    Allow: 0, //Do nothing, let the request pass
-    Empty: 1, //Stop the request and return HTTP 200 with empty response body
-    Deny: 2, //TODO: Reject the request
-    Redirect: 3, //TODO: Redirect the request to another address or to a local resource
+    //Process the request normally
+    Allow: 0,
+    //Stop the request and return HTTP 200 with empty response body
+    Empty: 1,
+    //Immediately close the connection
+    Deny: 2,
+    /**
+     * Redirect the request to another address or to a local resource, the user agent will not be able to know
+     * the resource is redirected, a certificate for the originally requested host will be signed and used.
+     * The following extra fields must be passed:
+     * @const {string} redirectLocation - The location to redirect, pass null for redirecting to a local resource.
+     * @const {string|Buffer} redirectText - The text to redirect to, this is only required if redirectLocation is null.
+     */
+    Redirect: 3,
 };
 
 /**
@@ -252,38 +264,38 @@ exports.RequestResult = {
  * @param {URL} destination - The requested URL.
  * @param {Header} headers - The headers object as reference, changes to it will be reflected. Be aware that some fields
  ** can't be changed, and some fields will cause problems if changed.
- * @return {RequestResult} The decision.
+ * @param {Function} callback - The function to call when a decision is made, the patcher can run asynchronously.
+ ** @param {RequestResult} result - The decision.
  ** An URL object contains:
  ** @const {string} domain - The domain of the URL, this is provided for convenience and performance.
  ** @const {string} path - The path of the URL, this is provided for convenience and performance.
  ** @const {string} fullURL - The full URL.
  */
-exports.requestPatcher = (source, destination, headers) => {
+exports.requestPatcher = (source, destination, headers, callback) => {
     //These parameters are not used
     void source;
     void destination;
     void headers;
     //This is just an example
-    return {
+    callback({
         result: exports.requestResult.Allow, //The reference will be different when replacing this dummy patcher
-        extra: null,
-    };
+    });
 };
 /**
- * Response patcher. Refer back to exports.requestPatcher() for more information.
+ * Response text patcher. Refer back to exports.requestPatcher() for more information.
+ * Only text response will pass through this patcher.
  * @var {Function}
  * @param {string} text - The response text.
- * @return {string} The patched string that will be passed to client.
+ * @param {Function} callback - The function to call when patching is done, the patcher can run asynchronously.
+ ** @param {string} patchedText - The patched response text.
  */
-exports.responsePatcher = (source, destination, text, headers) => {
+exports.responseTextPatcher = (source, destination, text, headers, callback) => {
     //These parameters are not used
     void source;
     void destination;
     void headers;
     //This is just an example
-    if (text) {
-        return text.replace(/(<head[^>]*>)/i, "$1" + `<script>console.log("Hello from Violentproxy :)");</script>`);
-    }
+    calback(text.replace(/(<head[^>]*>)/i, "$1" + `<script>console.log("Hello from Violentproxy :)");</script>`));
 };
 
 //Handle server crash
