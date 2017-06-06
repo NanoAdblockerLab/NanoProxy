@@ -14,8 +14,36 @@ const https = require("https"),
  * @const {Module}
  */
 const zlib = require("zlib"),
-    ssl = require("./Violentssl"),
-    us = require("./Violentscript");
+    userscript = require("./Violentscript"),
+    server = require("./Violentserver"),
+    agent = require("./Violentagent"),
+    ssl = require("./Violentssl");
+
+//Initialize some modules
+server.init({
+    https: https,
+    http: http,
+    ssl: ssl,
+});
+agent.init({
+    https: https,
+    http: http,
+});
+
+/**
+ * Get MIME type from header.
+ * @param {string} str - The encoding related header entry.
+ * @param {string} [def="text/html"] - The default value.
+ */
+const getType = (str, def = "text/html") => {
+    const parts = str.split(",");
+    for (let i = 0; i < parts.length; i++) {
+        if (!parts[i].includes("*")) {
+            return parts[i];
+        }
+    }
+    return def;
+};
 
 /**
  * Proxy engine for REQUEST request.
@@ -34,13 +62,12 @@ const requestEngine = (localReq, localRes) => {
         localRes.destroy();
         return;
     }
-    //Pass through some arguments
+    //Process options
     options.headers = localReq.headers;
-    //I think this can cause problem if the user agent decides to keep the connection alive
-    //options.agent = localReq.agent;
+    options.agent = agent.getAgent(localReq.httpVersion, localReq.headers, options.protocol === "https:");
     options.auth = localReq.auth;
     //Handle internal request loop
-    //As I can't easily find out what is my common name, the first proxied request will backloop internally
+    //As I can't easily find out what is my common name, the first request will backloop internally
     //This isn't the most efficient way to handle it, but should be good enough if Userscripts don't spam the API
     if (!localReq.url[0] === "/") {
         //TODO: Change this to handle Userscripts API
@@ -52,7 +79,7 @@ const requestEngine = (localReq, localRes) => {
         localRes.end();
     } else {
         //Patch the request
-        const requestResult = exports.requestRequestPatchingProvider(localReq.headers, localReq.url);
+        const requestResult = exports.requestPatcher(localReq.headers, localReq.url);
         //Further process headers so response from remote server can be parsed
         localReq.headers["accept-encoding"] = "gzip, deflate";
         switch (requestResult.result) {
@@ -61,17 +88,17 @@ const requestEngine = (localReq, localRes) => {
                 break;
             case exports.requestResult.Empty:
                 localRes.writeHead(200, "OK", {
-                    "Content-Type": "text/plain", //TODO: Dynamically determine this
-                    "Server": "Violentproxy Proxy Server", //TODO: mock as something more believable (?)
+                    "Content-Type": requestResult.type || getType(localReq.headers["accept"]),
+                    "Server": requestResult.server || "Apache/2.4.7 (Ubuntu)",
                 });
                 localRes.end();
                 return; //Stop here
             case exports.requestResult.Deny:
-                //TODO: implement this
-                break;
+                localRes.destroy();
+                return; //Stop here
             case exports.requestResult.Redirect:
                 //TODO: implement this
-                break;
+                throw "Not implemented";
             default:
                 throw "Unexpected request result";
         }
@@ -243,7 +270,12 @@ exports.start = (config) => { //TODO: This is completely broken now...
 exports.RequestResult = {
     //Process the request normally
     Allow: 0,
-    //Stop the request and return HTTP 200 with empty response body
+    /**
+     * Return a HTTP 200 response with an empty body.
+     * Pass in these extra fields when needed:
+     * @const {string} type - The content type, defaults to one of the requested one.
+     * @const {stirng} server - The server name, defaults to "Apache/2.4.7 (Ubuntu)".
+     */
     Empty: 1,
     //Immediately close the connection
     Deny: 2,
@@ -266,7 +298,7 @@ exports.RequestResult = {
  ** can't be changed, and some fields will cause problems if changed.
  * @param {Function} callback - The function to call when a decision is made, the patcher can run asynchronously.
  ** @param {RequestResult} result - The decision.
- ** An URL object contains:
+ * An URL object contains:
  ** @const {string} domain - The domain of the URL, this is provided for convenience and performance.
  ** @const {string} path - The path of the URL, this is provided for convenience and performance.
  ** @const {string} fullURL - The full URL.
