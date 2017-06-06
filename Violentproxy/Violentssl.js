@@ -381,8 +381,7 @@ exports.sign = (domain, callback) => {
         key = parts.join(".");
     }
     //Load certificate from key
-    let cert = certCache[key];
-    if (!cert) {
+    if (!certCache[key]) {
         //Make sure I won't be writting into it at two places
         certCache[key] = "locked";
         //Try to load certificates from files
@@ -391,8 +390,8 @@ exports.sign = (domain, callback) => {
                 //Found, but I still need to check if it is going to expire, 7 days is going to be a safe value
                 let line = new Date();
                 line.setDate(line.getDate() + 7);
-                if (line > cert.cert.validity.notAfter) {
-                    //Generate new one
+                if (line > forge.pki.certificateFromPem(certCache[key].cert).validity.notAfter) {
+                    //Generate a new one
                     certGen(key, () => {
                         callback(certCache[key]);
                     });
@@ -408,8 +407,7 @@ exports.sign = (domain, callback) => {
             }
         })
     } else if (cert === "locked") {
-        //There is probably a better way, but this is nice and easy, and I won't be
-        //depending on extra dependencies
+        //There is probably a better way, but this is nice and easy, and I won't need an extra dependency
         let token = setInterval(() => {
             if (certCache[key] !== "locked") {
                 clearTimeout(token);
@@ -420,6 +418,6 @@ exports.sign = (domain, callback) => {
         }, 500);
     } else {
         //Certificate found, as this was verified before, I don't need to check for expiry date
-        callback(cert);
+        callback(certCache[key]);
     }
 };
