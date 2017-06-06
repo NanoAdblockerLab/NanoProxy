@@ -1,4 +1,6 @@
-//SSL engine for Violentproxy
+//TLS engine for Violentproxy
+//Note that "SSL" often means "SSL/TLS", OpenSSL fully supports TLS related calculations and functions
+//As of 2017, SSL is no longer used and its support is dropped by modern browsers
 "use strict";
 
 /**
@@ -52,7 +54,7 @@ const CAsbj = [
     },
     {
         shortName: "OU", //Organizational Unit, like department
-        value: "Violentssl Engine",
+        value: "Violenttls Engine",
     },
     {
         shortName: "ST", //State, province, etc.
@@ -142,7 +144,7 @@ const serverSbj = [
     },
     {
         shortName: "OU", //Organizational Unit, like department
-        value: "Violentssl Engine",
+        value: "Violenttls Engine",
     },
     {
         shortName: "ST", //State, province, etc.
@@ -386,7 +388,7 @@ const loadCert = (domainKey, callback) => {
 /**
  * Initialize certificate authority, don't call sign() before receiving callback from this function.
  * @function
- * @param {Funciton} callback - The function to call when Violentssl is ready.
+ * @param {Funciton} callback - The function to call when Violenttls is ready.
  ** @param {Certificate} cert - The certificate for the proxy server itself.
  */
 exports.init = (callback) => {

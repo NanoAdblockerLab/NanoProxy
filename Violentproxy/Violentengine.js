@@ -16,7 +16,7 @@ const https = require("https"),
 const zlib = require("zlib"),
     userscript = require("./Violentscript"),
     agent = require("./Violentagent"),
-    ssl = require("./Violentssl");
+    tls = require("./Violenttls");
 
 //Initialize some modules
 agent.init({
@@ -55,6 +55,7 @@ const isText = (mimeType) => {
 /**
  * Proxy engine for REQUEST request.
  * In this mode, the user agent gives me the full control, so I don't need to create servers on the fly.
+ * This is generally used for HTTP requests.
  * @function
  * @param {IncomingMessage} localReq - The local request object.
  * @param {ServerResponse} localRes - The local response object.
@@ -206,42 +207,43 @@ requestEngine.finalize = (localRes, remoteRes, referer, url, responseData) => {
 };
 
 /**
- * Proxy engine for CONNECT (HTTPS) requests.
- * @param {IncomingMessage} localReq - 
- * @param {Socket} localSocket
- * @param {Buffer} localHead
+ * Proxy engine for CONNECT requests.
+ * In this mode, the user agent will ask me to establish a tunnel to the target host. As I can't decrypt the data that is going over,
+ * I have to create a local server to make the user agent to believe it is speaking to a real server.
+ * I need to create a server for each domain, the server for "example.com" can serve requests to "example.com" and "*.example.com",
+ * but not "*.www.example.com".
+ * This is generally used for HTTPS.
+ * @param {IncomingMessage} localReq - The local request object.
+ * @param {Socket} localSocket - The local socket, the user agent will ask me to connect this to a socket of the remote server,
+ ** but obviously I will connect it to a local server instead.
+ * @param {Buffer} localHead - The begining of message, this may or may not be present.
  */
 const connectEngine = (localReq, localSocket, localHead) => {
-    throw "not implemented";
+    //If I think it's OK to give up control over the communication, I can pipe the request over like the example here:
     //https://newspaint.wordpress.com/2012/11/05/node-js-http-and-https-proxy/
     console.log(`CONNECT request received: ${localReq.url}`);
     //Parse request
     let [host, port, ...rest] = localReq.url.split(":"); //Expected to be something like example.com:443
-    if (rest.length > 0 || !port || !host) {
+    if (rest.length > 0 || !port || !host || host.includes("*")) {
+        //Not valid, drop the connection
         localSocket.destroy();
         return;
     }
     port = parseInt(port);
     if (isNaN(port) || port < 0 || port > 65535) {
+        //Port not valid, drop the connection
         localSocket.destroy();
         return;
     }
-    //Now I need to decide what to do, if I establish a two way socket, then I have no control over what is going though the pipe
-    //because the user agent and the server may agree to keep the connection alive, and I won't know when a message ends.
-    //If I initiate a separate request, process it, and send back to the user agent, then I can't keep the connection alive,
-    //for XMLHttpRequest, this can be very expensive. If the server is using custom software, it may cut me off, it shoudln't be a
-    //problem for "standard" software, but it can slow down the connection by quite a bit.
-    //There is no easy way to determine whether a request is XMLHttpRequest, but maybe I can inject some script to inform me to use
-    //socket for subsequent requests.
-    //In order to intercept the request, I need to sign a certificate then start a HTTPS server, which can be an expensive process.
-    //For sites the user frequet, I can cache the certificates, as long as the user doesn't visite hundreds of different sites,
-    //it should be OK on modern devices.
+    //Even though most user agents will use CONNECT for HTTPS only, but it's not a safe assumption
+    //I need to check if the data is actually a SSL handshake, there is a simple technique here:
+    //https://gist.github.com/tg-x/835636
+    //Since SSLv2 is now prohibited, it's now safe to assume any encrypted connection is using SSLv3 or TLSv1.x
+    //Chromium is already rejecting SSLv3 connections, in 2017, I can safely assume only TLS is used
+    //https://tools.ietf.org/html/rfc6176
+    //But I don't think this detection method is 100% safe, so I will also fallback to unencrypted mode if the actual handshake fails
 
-    //Connect using socket
-    //const remoteSocket = new net.Socket();
-    //remoteSocket.connect(port, host, () => {
-    //
-    //});
+
 
 };
 
@@ -250,39 +252,39 @@ const connectEngine = (localReq, localSocket, localHead) => {
  * @function
  * @param {Object} config - The configuration object.
  ** {integer} [config.port=12345] - The port that the proxy server listens.
- ** {boolean} [useSSL=false] - Whether start the proxy server in HTTPS mode.
+ ** {boolean} [useTLS=false] - Whether start the proxy server in HTTPS mode.
  ** {boolean} [unsafe=false] - Whether HTTPS to HTTP proxy is allowed.
  */
-exports.start = (config) => { //TODO: This is completely broken now...
+exports.start = (config) => {
     config = config || {};
     //Load configuration
     const port = config.port || 12345;
-    const useSSL = config.useSSL || false;
+    const useTLS = config.useTLS || false;
     const unsafe = config.unsafe || false;
     let server;
     //Create server
-    if (useSSL) {
+    if (useTLS) {
         console.log("Loading certificate authority...");
-        ssl.init((cert) => {
+        tls.init((cert) => {
             server = https.createServer(cert, requestEngine); //Still handle REQUEST the same way
             server.on("connect", connectEngine); //Handle CONNECT
             server.listen(port);
-            console.log(`Violentproxy started on port ${port}, SSL is enabled.`);
+            console.log(`Violentproxy started on port ${port}, TLS is enabled.`);
         });
     } else if (unsafe) {
-        //Similar to the mode above, except the proxy server is started in HTTP mode
+        //Similar to the mode above, except the proxy server itself is started in HTTP mode
         //This is good for localhost, as it would speed up the proxy server
         console.log("Loading certificate authority...");
-        ssl.init(() => {
+        tls.init(() => {
             server = http.createServer(requestEngine);
             server.on("connect", connectEngine);
             server.listen(port);
-            console.log(`Violentproxy started on port ${port}, SSL is disabled but HTTPS requests are allowed.`);
+            console.log(`Violentproxy started on port ${port}, TLS is disabled but HTTPS requests are allowed.`);
         });
     } else {
         server = http.createServer(requestEngine); //Only handle REQUEST
         server.listen(port);
-        console.log(`Violentproxy started on port ${port}, SSL is disabled and HTTPS requests are disallowed.`);
+        console.log(`Violentproxy started on port ${port}, TLS is disabled and HTTPS requests are disallowed.`);
     }
 };
 
