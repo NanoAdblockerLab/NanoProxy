@@ -15,16 +15,10 @@ const https = require("https"),
  */
 const zlib = require("zlib"),
     userscript = require("./Violentscript"),
-    server = require("./Violentserver"),
     agent = require("./Violentagent"),
     ssl = require("./Violentssl");
 
 //Initialize some modules
-server.init({
-    https: https,
-    http: http,
-    ssl: ssl,
-});
 agent.init({
     https: https,
     http: http,
@@ -44,9 +38,23 @@ const getType = (str, def = "text/html") => {
     }
     return def;
 };
+/**
+ * Check if given MIME type is text.
+ * https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Complete_list_of_MIME_types
+ * @param {string} mimeType - The MIME type to check.
+ */
+const isText = (mimeType) => {
+    if (!mimeType) {
+        //Assume not text if the server didn't send over the content type
+        return false;
+    } else {
+        return (mimeType.startsWith("text/")) || mimeType.endsWith("/xhtml+xml") || mimeType.endsWith("/xml");
+    }
+};
 
 /**
  * Proxy engine for REQUEST request.
+ * In this mode, the user agent gives me the full control, so I don't need to create servers on the fly.
  * @function
  * @param {IncomingMessage} localReq - The local request object.
  * @param {ServerResponse} localRes - The local response object.
@@ -79,85 +87,121 @@ const requestEngine = (localReq, localRes) => {
         localRes.end();
     } else {
         //Patch the request
-        const requestResult = exports.requestPatcher(localReq.headers, localReq.url);
-        //Further process headers so response from remote server can be parsed
-        localReq.headers["accept-encoding"] = "gzip, deflate";
-        switch (requestResult.result) {
-            case exports.requestResult.Allow:
-                //Do nothing, let the request pass
-                break;
-            case exports.requestResult.Empty:
-                localRes.writeHead(200, "OK", {
-                    "Content-Type": requestResult.type || getType(localReq.headers["accept"]),
-                    "Server": requestResult.server || "Apache/2.4.7 (Ubuntu)",
-                });
-                localRes.end();
-                return; //Stop here
-            case exports.requestResult.Deny:
-                localRes.destroy();
-                return; //Stop here
-            case exports.requestResult.Redirect:
-                //TODO: implement this
-                throw "Not implemented";
-            default:
-                throw "Unexpected request result";
-        }
-        //Proxy request
-        let request = (options.protocol === "https:" ? https : http).request(options, (remoteRes) => {
-            //remoteRes is http.IncomingMessage, which is also a Stream
-            let data = [];
-            remoteRes.on("data", (chunk) => {
-                data.push(chunk);
-            });
-            remoteRes.on("end", () => {
-                data = Buffer.concat(data);
-                //Decode response
-                const encoding = remoteRes.headers["content-encoding"].toLowerCase();
-                if (encoding === "gzip" || encoding === "deflate") {
-                    zlib.unzip(data, (err, result) => {
-                        if (err) {
-                            localRes.writeHead(500, "Data Stream Parse Error", {
-                                "Content-Type": "text/plain",
-                                "Server": "Violentproxy Proxy Server",
-                            });
-                            localRes.write("Violentproxy could not complete your request because there is a data stream parsing error.");
-                            localRes.end();
-                        } else {
-                            finalize(localRes, remoteRes, localReq.url, result.toString()); //TODO: what about images? 
-                        }
+        exports.requestPatcher(localReq.headers["referer"], localReq.url, localReq.headers, (requestResult) => {
+            //Further process headers so response from remote server can be parsed
+            localReq.headers["accept-encoding"] = "gzip, deflate";
+            switch (requestResult.result) {
+                case exports.RequestResult.Allow:
+                    //Do nothing, let the request pass
+                    break;
+                case exports.RequestResult.Empty:
+                    localRes.writeHead(200, "OK", {
+                        "Content-Type": requestResult.type || getType(localReq.headers["accept"]),
+                        "Server": requestResult.server || "Apache/2.4.7 (Ubuntu)",
                     });
-                } else {
-                    //Assume identity
-                    finalize(localRes, remoteRes, localReq.url, data.toString()); //TODO: what about images? 
-                }
-            });
-            remoteRes.on("error", () => {
-                //I'm not sure how to properly handle this, I think this is good
-                localRes.writeHead(500, "Data Stream Read Error", {
-                    "Content-Type": "text/plain",
-                    "Server": "Violentproxy Proxy Server",
+                    localRes.end();
+                    return; //Stop here
+                case exports.RequestResult.Deny:
+                    localRes.destroy();
+                    return; //Stop here
+                case exports.RequestResult.Redirect:
+                    if (requestResult.redirectLocation === null) {
+                        //Just write back the redirected text
+                        localRes.writeHead(200, "OK", requestResult.headers || {
+                            "Content-Type": "text/plain",
+                            "Server": "Apache/2.4.7 (Ubuntu)",
+                        });
+                        localRes.write(requestResult.redirectText);
+                        localRes.end();
+                        return;
+                    } else {
+                        //I expect the patcher to return valid URL
+                        options = url.parse(requestResult.redirectLocation);
+                        //Copy the rest of the options again
+                        options.headers = localReq.headers;
+                        options.agent = agent.getAgent(localReq.httpVersion, localReq.headers, options.protocol === "https:");
+                        options.auth = localReq.auth;
+                        break;
+                    }
+                default:
+                    throw "Unexpected request result";
+            }
+            //Proxy request
+            let request = (options.protocol === "https:" ? https : http).request(options, (remoteRes) => {
+                //remoteRes is http.IncomingMessage, which is also a Stream
+                let data = [];
+                remoteRes.on("data", (chunk) => {
+                    data.push(chunk);
                 });
-                localRes.write("Violentproxy could not complete your request because there is a data stream read error.");
-                localRes.end();
-            });
-            //Add server abort handling
-            remoteRes.on("aborted", () => {
-                //As we do not send message back unless it is ready, it's safe to do a complete response here
-                localRes.writeHead(502, "Broken Pipe / Remote Server Disconnected", {
-                    "Content-Type": "text/plain",
-                    "Server": "Violentproxy Proxy Server",
+                remoteRes.on("end", () => {
+                    data = Buffer.concat(data);
+                    //Decode response
+                    let encoding = remoteRes.headers["content-encoding"];
+                    if (encoding) {
+                        encoding = encoding.toLowerCase();
+                    }
+                    if (encoding === "gzip" || encoding === "deflate") {
+                        zlib.unzip(data, (err, result) => {
+                            if (err) {
+                                //Could not parse, drop the connection
+                                localRes.destroy();
+                            } else {
+                                requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, result);
+                            }
+                        });
+                    } else {
+                        //Assume identity
+                        requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, data);
+                    }
                 });
-                localRes.write("Violentproxy could not complete your request because remote server closed the connection.");
-                localRes.end();
+                remoteRes.on("error", () => {
+                    //Something went wrong, drop the local connection
+                    localRes.destroy();
+                });
+                remoteRes.on("aborted", () => {
+                    //Remote server disconnected prematurely, drop the local connection
+                    localRes.destroy();
+                });
             });
+            request.on("error", () => {
+                //This can error out if the address is not valid
+                localRes.destroy();
+            });
+            request.end();
+            //Abort request when local client disconnects
+            localReq.on("aborted", () => { request.abort(); });
         });
-        request.on("error", () => {
-            //This can error out if the address is not valid
-            localRes.destroy();
+    }
+};
+/**
+ * Process final request result of a REQUEST request and send it to client.
+ * @param {http.ServerResponse} localRes - The object that can be used to respond client request.
+ * @param {http.IncomingMessage} remoteRes - The object that contains data about server response.
+ * @param {string} referer - The referrer, if exist.
+ * @param {string} url - The request URL.
+ * @param {Any} responseData - The response data.
+ */
+requestEngine.finalize = (localRes, remoteRes, referer, url, responseData) => {
+    const onDone = () => {
+        //So I don't need to encode it again
+        remoteRes.headers["content-encoding"] = "identity";
+        //The length will be changed when it is patched, let the browser figure out how long it actually is
+        //I can probably count that, I'll pass in an updated length if removing the header causes problems
+        delete remoteRes.headers["content-length"];
+        localRes.writeHead(remoteRes.statusCode, remoteRes.statusMessage, remoteRes.headers);
+        localRes.write(responseData);
+        localRes.end();
+    };
+    //Check MIME type, I can only patch text, changing other types must be done by request patcher
+    if (isText(remoteRes.headers["content-type"])) {
+        exports.responsePatcher(referer, url, responseData.toString(), remoteRes.headers, (patchedData) => {
+            responseData = patchedData;
+            onDone();
         });
-        request.end();
-        //Abort request when local client disconnects
-        localReq.on("aborted", () => { request.abort(); });
+    } else {
+        exports.responsePatcher(referer, url, null, remoteRes.headers, () => {
+            onDone();
+        });
     }
 };
 
@@ -202,27 +246,6 @@ const connectEngine = (localReq, localSocket, localHead) => {
 };
 
 /**
- * Process final request result of a REQUEST request and send it to client.
- * @param {http.ServerResponse} localRes - The object that can be used to respond client request.
- * @param {http.IncomingMessage} remoteRes - The object that contains data about server response.
- * @param {string} url - The request URL.
- * @param {string} responseText - The response text.
- */
-const finalize = (localRes, remoteRes, url, responseText) => {
-    const text = exports.requestResponsePatchingProvider(remoteRes.headers, url, responseText);
-    //So I don't need to encode it again
-    remoteRes.headers["content-encoding"] = "identity";
-    //The length will be changed when it is patched, let the browser figure out how long it actually is
-    //I can probably count that, I'll pass in an updated length if removing the header causes problems
-    delete remoteRes.headers["content-length"];
-    //TODO: Patch Content Security Policy to allow injected scripts to run
-    //      Maybe this should e done by patching provider
-    localRes.writeHead(remoteRes.statusCode, remoteRes.statusMessage, remoteRes.headers);
-    localRes.write(text);
-    localRes.end();
-};
-
-/**
  * Start a proxy server.
  * @function
  * @param {Object} config - The configuration object.
@@ -259,7 +282,7 @@ exports.start = (config) => { //TODO: This is completely broken now...
     } else {
         server = http.createServer(requestEngine); //Only handle REQUEST
         server.listen(port);
-        console.log(`Violentproxy started on port ${port}, SSL is disabled but HTTPS requests are allowed.`);
+        console.log(`Violentproxy started on port ${port}, SSL is disabled and HTTPS requests are disallowed.`);
     }
 };
 
@@ -285,6 +308,7 @@ exports.RequestResult = {
      * The following extra fields must be passed:
      * @const {string} redirectLocation - The location to redirect, pass null for redirecting to a local resource.
      * @const {string|Buffer} redirectText - The text to redirect to, this is only required if redirectLocation is null.
+     * @const {Header} headers - The headers, omit to use the default one.
      */
     Redirect: 3,
 };
@@ -310,24 +334,27 @@ exports.requestPatcher = (source, destination, headers, callback) => {
     void headers;
     //This is just an example
     callback({
-        result: exports.requestResult.Allow, //The reference will be different when replacing this dummy patcher
+        result: exports.RequestResult.Allow, //The reference will be different when replacing this dummy patcher
     });
 };
 /**
- * Response text patcher. Refer back to exports.requestPatcher() for more information.
- * Only text response will pass through this patcher.
+ * Response patcher. Refer back to exports.requestPatcher() for more information.
  * @var {Function}
- * @param {string} text - The response text.
+ * @param {string|undefined} text - The response text if the response is text, undefined otherwise.
  * @param {Function} callback - The function to call when patching is done, the patcher can run asynchronously.
- ** @param {string} patchedText - The patched response text.
+ ** @param {string} patchedText - The patched response text, if apply.
  */
-exports.responseTextPatcher = (source, destination, text, headers, callback) => {
+exports.responsePatcher = (source, destination, text, headers, callback) => {
     //These parameters are not used
     void source;
     void destination;
     void headers;
     //This is just an example
-    calback(text.replace(/(<head[^>]*>)/i, "$1" + `<script>console.log("Hello from Violentproxy :)");</script>`));
+    if (text) {
+        callback(text.replace(/(<head[^>]*>)/i, "$1" + `<script>console.log("Hello from Violentproxy :)");</script>`));
+    } else {
+        callback();
+    }
 };
 
 //Handle server crash
