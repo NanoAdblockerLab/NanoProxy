@@ -60,7 +60,7 @@ const isText = (mimeType) => {
  * @param {IncomingMessage} localReq - The local request object.
  * @param {ServerResponse} localRes - The local response object.
  */
-const requestEngine = (localReq, localRes) => {
+let requestEngine = (localReq, localRes) => {
     console.log(`REQUEST request received: ${localReq.url}`);
     //Prepare request
     let options
@@ -176,6 +176,7 @@ const requestEngine = (localReq, localRes) => {
 };
 /**
  * Process final request result of a REQUEST request and send it to client.
+ * @function
  * @param {http.ServerResponse} localRes - The object that can be used to respond client request.
  * @param {http.IncomingMessage} remoteRes - The object that contains data about server response.
  * @param {string} referer - The referrer, if exist.
@@ -207,18 +208,34 @@ requestEngine.finalize = (localRes, remoteRes, referer, url, responseData) => {
 };
 
 /**
+ * Available TLS servers, they are used to proxy encrypted CONNECT requests.
+ * A server key must be like "*.example.com".
+ * TODO: Add a timer that remove servers when they are not used for extended amount of time.
+ * @var {Dictionary.<Server>}
+ */
+let runningServers = [];
+/**
+ * Server object, this prevents issues that can be caused in race condition.
+ * @class
+ */
+const Server = class {
+
+};
+
+/**
  * Proxy engine for CONNECT requests.
  * In this mode, the user agent will ask me to establish a tunnel to the target host. As I can't decrypt the data that is going over,
  * I have to create a local server to make the user agent to believe it is speaking to a real server.
  * I need to create a server for each domain, the server for "example.com" can serve requests to "example.com" and "*.example.com",
  * but not "*.www.example.com".
  * This is generally used for HTTPS.
+ * @function
  * @param {IncomingMessage} localReq - The local request object.
  * @param {Socket} localSocket - The local socket, the user agent will ask me to connect this to a socket of the remote server,
  ** but obviously I will connect it to a local server instead.
  * @param {Buffer} localHead - The begining of message, this may or may not be present.
  */
-const connectEngine = (localReq, localSocket, localHead) => {
+let connectEngine = (localReq, localSocket, localHead) => {
     //If I think it's OK to give up control over the communication, I can pipe the request over like the example here:
     //https://newspaint.wordpress.com/2012/11/05/node-js-http-and-https-proxy/
     console.log(`CONNECT request received: ${localReq.url}`);
@@ -235,15 +252,21 @@ const connectEngine = (localReq, localSocket, localHead) => {
         localSocket.destroy();
         return;
     }
-    //Even though most user agents will use CONNECT for HTTPS only, but it's not a safe assumption
+    //Even though most user agents will use CONNECT for HTTPS only, it's not a safe assumption
     //I need to check if the data is actually a SSL handshake, there is a simple technique here:
     //https://gist.github.com/tg-x/835636
-    //Since SSLv2 is now prohibited, it's now safe to assume any encrypted connection is using SSLv3 or TLSv1.x
-    //Chromium is already rejecting SSLv3 connections, in 2017, I can safely assume only TLS is used
+    //Since SSLv2 is now prohibited and Chromium is already rejecting SSLv3 connections, in 2017, I can safely assume only TLS is used
     //https://tools.ietf.org/html/rfc6176
     //But I don't think this detection method is 100% safe, so I will also fallback to unencrypted mode if the actual handshake fails
 
 
+
+};
+/**
+ * Detect TLS handshake from incoming data.
+ * https://gist.github.com/tg-x/835636
+ */
+connectEngine.onHandshake = (data) => {
 
 };
 

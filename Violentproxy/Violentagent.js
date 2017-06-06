@@ -9,14 +9,18 @@ let https, http;
 
 /**
  * The cache of available HTTP agents.
- * @var {Array.<Agent>}
+ * An agent key must be like "timeout,maxConnection".
+ * It can be "5000," (default max connection of Node.js is used).
+ * Two special cases are "close" (don't keep alive) and "default" (keep alive with all default settings).
+ * TODO: Add a timer that remove agents when they are not used for extended amount of time (except special ones).
+ * @var {Dictionary.<Agent>}
  */
 let agentCache = [];
 /**
- * The cache of available HTTPS agents.
- * @var {Array.<Agent>}
+ * The cache of available HTTPS agents. Refer to agentCache for more information.
+ * @var {Dictionary.<Agent>}
  */
-let sslAgentCache = [];
+let tlsAgentCache = [];
 
 /**
  * Initialize agents manager.
@@ -28,9 +32,9 @@ exports.init = (modules) => {
     http = modules.http;
     //Initialize common agents
     agentCache["close"] = new http.Agent({ keepAlive: false });
-    sslAgentCache["close"] = new https.Agent({ keepAlive: false });
+    tlsAgentCache["close"] = new https.Agent({ keepAlive: false });
     agentCache["default"] = new http.Agent({ keepAlive: true });
-    sslAgentCache["default"] = new https.Agent({ keepAlive: true });
+    tlsAgentCache["default"] = new https.Agent({ keepAlive: true });
 };
 
 /**
@@ -38,14 +42,15 @@ exports.init = (modules) => {
  * @function
  * @param {string} httpVer - The version of HTTP.
  * @param {Header} headers - The header object.
- * @param {boolean} useSSL - Whether SSL is used.
+ * @param {boolean} useTLS - Whether TLS must be used. Keep in mind that this is only for the connection between the
+ ** proxy and the remote server, it can be different than the connection between the proxy and the user agent.
  * @return {Agent} An agent.
  */
-exports.getAgent = (httpVer, headers, useSSL) => {
+exports.getAgent = (httpVer, headers, useTLS) => {
     if ((httpVer === "1.0" && headers["connection"] !== "keep-alive") ||
         headers["connection"] === "close") {
         //Close connection
-        return useSSL ? sslAgentCache["close"] : agentCache["close"];
+        return useTLS ? tlsAgentCache["close"] : agentCache["close"];
     } else {
         //Use keep alive
         //https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Keep-Alive
@@ -71,14 +76,14 @@ exports.getAgent = (httpVer, headers, useSSL) => {
                         break;
                 }
             }
-            cache = useSSL ? sslAgentCache : agentCache;
+            cache = useTLS ? tlsAgentCache : agentCache;
             if (!cache[key]) {
-                cache[key] = new (useSSL ? https : http).Agent(options);
+                cache[key] = new (useTLS ? https : http).Agent(options);
             }
             return cache[key];
         } else {
             //Use default agent, since I don't have more information
-            return useSSL ? sslAgentCache["default"] : agentCache["default"];
+            return useTLS ? tlsAgentCache["default"] : agentCache["default"];
         }
     }
 };

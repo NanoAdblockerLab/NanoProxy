@@ -34,9 +34,49 @@ let proxyCert, proxyPrivate;
  * Server certificates cache.
  * Will be a dictionary of domain to certificate. The certificate object can be passed directly to https.createServer().
  * A domain key must be like "*.example.com", the wildcard is required.
- * @var {Dictionary.<Certificate>}
+ * TODO: Add a timer that remove certificates when they are not used for extended amount of time.
+ * @var {Dictionary.<Cert>}
  */
 let certCache = {};
+/**
+ * Certificate object, this prevents issues that can be caused in race condition.
+ * @class
+ */
+const Cert = class {
+    /**
+     * Construct the object.
+     * Use Cert.value to get the certificate and Cert.busy to check ready state.
+     * @constructor
+     */
+    constructor() {
+        this.busy = true;
+        this.onReadyCallbacks = [];
+    }
+    /**
+     * Set this certificate, this will also mark it as ready and trigger all callbacks.
+     * @method
+     * @param {Certificate} val - The certificate
+     */
+    setVal(val) {
+        this.value = val;
+        this.busy = false;
+        for (let i = 0; i < this.onReadyCallbacks.length; i++) {
+            this.onReadyCallbacks[i]();
+        }
+    }
+    /**
+     * Schedule a function to call once the certificate is ready
+     * @method
+     * @param {Function} func - The funtion to call
+     */
+    onceReady(func) {
+        if (this.busy) {
+            this.onReadyCallbacks.push(func);
+        } else {
+            func();
+        }
+    }
+}
 
 /**
  * Certificate authority subject.
@@ -331,10 +371,10 @@ const genCert = (domainKey, callback) => {
         let done = 0;
         const onDone = () => {
             console.log(`Server certificate for ${domainKey} is generated.`);
-            certCache[domainKey] = {
+            certCache[domainKey].setVal({
                 cert: forge.pki.certificateToPem(serverCert),
                 key: forge.pki.privateKeyToPem(privateKey),
-            };
+            });
             callback();
         };
         const onTick = (err) => {
@@ -424,7 +464,7 @@ exports.init = (callback) => {
 
 /**
  * Get a certificate for the current domain, pass it in directly, don't add wildcard.
- * TODO: Test out if Chrome like our shortcut, we are not checking public suffix
+ * TODO: Test out if Chrome like our shortcut, we are not checking public suffix.
  * @function
  * @param {Function} callback - The function to call when the certificate is ready.
  ** @param {Certificate} - An object that can be directly passed to https.createServer().
@@ -445,42 +485,37 @@ exports.sign = (domain, callback) => {
     }
     //Load certificate from key
     if (!certCache[key]) {
-        //Make sure I won't be writting into it at two places
-        certCache[key] = "locked";
+        certCache[key] = new Cert();
         //Try to load certificates from files
         loadCert(key, (result) => {
             if (result) {
                 //Found, but I still need to check if it is going to expire, 7 days is going to be a safe value
                 let line = new Date();
                 line.setDate(line.getDate() + 7);
-                if (line > forge.pki.certificateFromPem(certCache[key].cert).validity.notAfter) {
+                if (line > forge.pki.certificateFromPem(certCache[key].value.cert).validity.notAfter) {
                     //Generate a new one
                     certGen(key, () => {
-                        callback(certCache[key]);
+                        callback(certCache[key].value);
                     });
                 } else {
                     //Still good, just use it
-                    callback(certCache[key]);
+                    //Schedule for next tick to make it asynchronous
+                    process.nextTick(callback(certCache[key].value));
                 }
             } else {
                 //Generate a new one
                 certGen(key, () => {
-                    callback(certCache[key]);
+                    callback(certCache[key].value);
                 });
             }
         })
-    } else if (cert === "locked") {
+    } else if (certCache[key].busy) {
         //There is probably a better way, but this is nice and easy, and I won't need an extra dependency
-        let token = setInterval(() => {
-            if (certCache[key] !== "locked") {
-                clearTimeout(token);
-                //As locking certificate only occure when I am signing new one, I don't need to
-                //check if it is going to expire
-                callback(certCache[key]);
-            }
-        }, 500);
+        certCache[key].onceReady(() => {
+            callback(certCache[key].value);
+        });
     } else {
         //Certificate found, as this was verified before, I don't need to check for expiry date
-        callback(certCache[key]);
+        process.nextTick(callback(certCache[key].value));
     }
 };
