@@ -252,19 +252,16 @@ let connectEngine = (localReq, localSocket, localHead) => {
         localSocket.destroy();
         return;
     }
-    //Even though most user agents will use CONNECT for HTTPS only, it's not a safe assumption
-    //I need to check if the data is actually a SSL handshake, there is a simple technique here:
-    //https://gist.github.com/tg-x/835636
+    //Even though most user agents will use CONNECT for HTTPS only, it's not a safe assumption, I need to check if the data that is
+    //coming in is actually a TLS handshake
     //Since SSLv2 is now prohibited and Chromium is already rejecting SSLv3 connections, in 2017, I can safely assume only TLS is used
     //https://tools.ietf.org/html/rfc6176
-    //But I don't think this detection method is 100% safe, so I will also fallback to unencrypted mode if the actual handshake fails
-
-
 
 };
 /**
- * Detect TLS handshake from incoming data.
+ * Detect TLS handshake from incoming data, here is a simple technique to do it:
  * https://gist.github.com/tg-x/835636
+ * But I don't think this detection method is 100% safe, so I will also fallback to unencrypted mode if the actual handshake fails
  */
 connectEngine.onHandshake = (data) => {
 
@@ -345,7 +342,7 @@ exports.RequestResult = {
  * @param {URL} destination - The requested URL.
  * @param {Header} headers - The headers object as reference, changes to it will be reflected. Be aware that some fields
  ** can't be changed, and some fields will cause problems if changed.
- * @param {Function} callback - The function to call when a decision is made, the patcher can run asynchronously.
+ * @param {Function} callback - The function to call when a decision is made, the patcher can be either synchronous or asynchronous.
  ** @param {RequestResult} result - The decision.
  * An URL object contains:
  ** @const {string} domain - The domain of the URL, this is provided for convenience and performance.
@@ -366,7 +363,7 @@ exports.requestPatcher = (source, destination, headers, callback) => {
  * Response patcher. Refer back to exports.requestPatcher() for more information.
  * @var {Function}
  * @param {string|undefined} text - The response text if the response is text, undefined otherwise.
- * @param {Function} callback - The function to call when patching is done, the patcher can run asynchronously.
+ * @param {Function} callback - Refer back to exports.requestPatcher() for more information.
  ** @param {string} patchedText - The patched response text, if apply.
  */
 exports.responsePatcher = (source, destination, text, headers, callback) => {
