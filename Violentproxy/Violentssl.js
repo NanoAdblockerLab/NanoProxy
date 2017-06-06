@@ -18,7 +18,7 @@ const forge = require("node-forge"),
 const certFolder = "./Violentproxy/Violentcert";
 
 /**
- * The root certificate and its key. Will be initialized when init() is called.
+ * The root certificate and its keys. Will be initialized when init() is called.
  * @const {Certificate}
  */
 let CAcert, CAprivate, CApublic;
