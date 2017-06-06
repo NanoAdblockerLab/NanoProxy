@@ -60,9 +60,18 @@ const Cert = class {
     setVal(val) {
         this.value = val;
         this.busy = false;
-        for (let i = 0; i < this.onReadyCallbacks.length; i++) {
-            this.onReadyCallbacks[i]();
+        //Call each callback asynchronously
+        let i = 0;
+        const call = () => {
+            this.onReadyCallbacks[i++]();
+            if (i < this.onReadyCallbacks.length) {
+                process.nextTick(call);
+            } else {
+                //Free memory
+                this.onReadyCallbacks = [];
+            }
         }
+        process.nextTick(call);
     }
     /**
      * Schedule a function to call once the certificate is ready
