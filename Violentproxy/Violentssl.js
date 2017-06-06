@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * Load necessary modules.
+ * Load modules.
  * I will use node-forge, as spawning a child-process every time I need to sign a certificate isn't really going
  * to be faster.
  * Also, it's a pain to get OpenSSL to work on Windows.
@@ -22,6 +22,11 @@ const certFolder = "./Violentproxy/Violentcert";
  * @const {Certificate}
  */
 let CAcert, CAprivate, CApublic;
+/**
+ * The certificate for the proxy server itself. Will be initialized when init() is called.
+ * @const {Certificate}
+ */
+let proxyCert, proxyPrivate;
 /**
  * Server certificates cache.
  * Will be a dictionary of domain to certificate. The certificate object can be passed directly to https.createServer().
@@ -103,6 +108,7 @@ const CAext = [
                 type: 7, //IP
                 ip: "127.0.0.1",
             },
+            //TODO: Dynamically load other IPs and domains
         ],
     },
     {
@@ -179,7 +185,7 @@ const getServerExt = (domain) => {
                 {
                     type: 2,
                     value: `*.${domain}`,
-                }
+                },
             ],
         },
         {
@@ -194,9 +200,11 @@ const getServerExt = (domain) => {
  * Generate a certificate authority root certificates, data will be written to global variables.
  * The new root certificate will also be saved to a file.
  * @function
+ * @param {Array.<string>} - The DNS names of the proxy server.
+ * @param {Array.<string>} - The IPs of the proxy server.
  * @param {Function} callback - The function to call when the root certificate is ready.
  */
-const genCA = (callback) => {
+const genCA = (proxyDNS, proxyIP, callback) => {
     console.log("Generating certificate authority root certificate...");
     //6 months should be long enough, and reminding the user that he is using a self-signed certificate might
     //not be a bad thing
@@ -213,7 +221,7 @@ const genCA = (callback) => {
     forge.pki.rsa.generateKeyPair({ bits: 2048 }, (err, keypair) => {
         //Abort on error
         if (err) {
-            console.log("ERROR: Could not create RSA key pair for the certificate authority root certificate.");
+            console.log("ERROR: Could not generate RSA key pair for the certificate authority root certificate.");
             throw err;
         }
         //Save keys
@@ -233,13 +241,16 @@ const genCA = (callback) => {
         //Save the root certificate to files
         let done = 0;
         const onDone = () => {
-            console.log("Certificate authority created, don't forget to install it.");
+            console.log("Certificate authority root certificate generated, don't forget to install it.");
             console.log(`The certificate is located at ${certFolder}/Violentca.crt`);
+            //Generate certificate for the proxy server
+            console.log("Generating certificate for the proxy server...");
+            //TODO: Test out to see if Chrome accepts the root certificate for the proxy server itself
             callback();
         };
         const onTick = (err) => {
             if (err) {
-                console.log("ERROR: Could not save certificate authority.");
+                console.log("ERROR: Could not save certificate authority root certificate.");
                 throw err;
             } else {
                 (++done === 3) && onDone();
@@ -286,13 +297,55 @@ const loadCA = (callback) => {
 };
 
 /**
- * Generate a server certificate. The new certificate will be saved to cache as well as to files.
+ * Generate a server certificate. Refer to genCA() for more information.
+ * The new certificate will be saved to cache as well as to files.
  * @function
  * @param {string} domainKey - The key for the cache dictionary.
  * @param {Function} callback - The function to call when it is done.
  */
 const genCert = (domainKey, callback) => {
-    //TODO
+    const path = `${certFolder}/+${domainKey.substring(1)}`;
+    console.log(`Generating server certificate for ${domainKey}...`);
+    let startDate = new Date();
+    startDate.setDate(startDate.getDate() - 1);
+    let endDate = new Date();
+    endDate.setDate(endDate.getDate() + 35); //5 weeks
+    forge.pki.rsa.generateKeyPair({ bits: 1024 }, (err, keypair) => {
+        if (err) {
+            console.log(`ERROR: Could not create RSA key pair for server certificate for ${domainKey}.`);
+            throw err;
+        }
+        const privateKey = keypair.privateKey;
+        const publucKey = keypair.publicKey;
+        let serverCert = forge.pki.rsa.createCertificate();
+        serverCert.validity.notBefore = startDate;
+        serverCert.validity.notAfter = endDate;
+        serverCert.setIssuer(CAcert.issuer.attributes);
+        serverCert.setSubject(serverSbj);
+        serverCert.setExtensions(getServerExt(domainKey.substring(2))); //Trim off "*."
+        serverCert.publicKey = publucKey;
+        serverCert.sign(CAprivate, forge.md.sha256.create());
+        let done = 0;
+        const onDone = () => {
+            console.log(`Server certificate for ${domainKey} is generated.`);
+            certCache[domainKey] = {
+                cert: forge.pki.certificateToPem(serverCert),
+                key: forge.pki.privateKeyToPem(privateKey),
+            };
+            callback();
+        };
+        const onTick = (err) => {
+            if (err) {
+                console.log(`ERROR: Could not save server certificate for ${domainKey}.`);
+                throw err;
+            } else {
+                (++done === 3) && onDone();
+            }
+        };
+        fs.writeFile(`${path}/Violentcert.crt`, forge.pki.certificateToPem(serverCert), onTick);
+        fs.writeFile(`${path}/Violentcert.public`, forge.pki.publicKeyToPem(publucKey), onTick);
+        fs.writeFile(`${path}/Violentcert.private`, forge.pki.privateKeyToPem(privateKey), onTick);
+    });
 };
 /**
  * Load certificate. Refer to loadCA() for more information.
@@ -333,8 +386,15 @@ const loadCert = (domainKey, callback) => {
  * Initialize certificate authority, don't call sign() before receiving callback from this function.
  * @function
  * @param {Funciton} callback - The function to call when Violentssl is ready.
+ ** @param {Certificate} cert - The certificate for the proxy server itself.
  */
 exports.init = (callback) => {
+    const onEnd = () => {
+        callback({
+            cert: forge.pki.certificateFromPem(CAcert),
+            key: forge.pki.privateKeyFromPem(CAprivate),
+        });
+    };
     loadCA((result) => {
         if (result) {
             //Found, but I still need to check if it is going to expire, 2 months is going to be a safe value
@@ -345,16 +405,16 @@ exports.init = (callback) => {
                 console.log("Don't uninstall the old certificate yet, as some server certificates are signed with it " +
                     "and may still be used.");
                 //Generate new one
-                genCA(callback);
+                genCA(onEnd);
             } else {
                 console.log("Certificate authority loaded.");
                 //All good
-                callback();
+                onEnd();
             }
         } else {
             console.log("No certificate authority found, generating a new one...");
             //Generate new one
-            genCA(callback);
+            genCA(onEnd);
         }
     });
 };

@@ -21,7 +21,7 @@ const zlib = require("zlib"),
  * @param {IncomingMessage} localReq - The local request object.
  * @param {ServerResponse} localRes - The local response object.
  */
-const engine = (localReq, localRes) => {
+const requestEngine = (localReq, localRes) => {
     console.log(`REQUEST request received: ${localReq.url}`);
     //Prepare request
     let options
@@ -138,7 +138,8 @@ const engine = (localReq, localRes) => {
  * @param {Socket} localSocket
  * @param {Buffer} localHead
  */
-const engines = (localReq, localSocket, localHead) => {
+const connectEngine = (localReq, localSocket, localHead) => {
+    throw "not implemented";
     //https://newspaint.wordpress.com/2012/11/05/node-js-http-and-https-proxy/
     console.log(`CONNECT request received: ${localReq.url}`);
     //Parse request
@@ -197,28 +198,39 @@ const finalize = (localRes, remoteRes, url, responseText) => {
  * @function
  * @param {Object} config - The configuration object.
  ** {integer} [config.port=12345] - The port that the proxy server listens.
- ** {Object} [cert=undefined] - The certificate for HTTPS mode. Leave undefined to use HTTP mode.
- ** {boolean} [unsafe = false] - Whether HTTPS to HTTP proxy is allowed.
+ ** {boolean} [useSSL=false] - Whether start the proxy server in HTTPS mode.
+ ** {boolean} [unsafe=false] - Whether HTTPS to HTTP proxy is allowed.
  */
 exports.start = (config) => { //TODO: This is completely broken now...
     config = config || {};
     //Load configuration
     const port = config.port || 12345;
     const useSSL = config.useSSL || false;
+    const unsafe = config.unsafe || false;
     let server;
     //Create server
     if (useSSL) {
         console.log("Loading certificate authority...");
-        ssl.init(() => {
-            server = https.createServer(ssl.sign("localhost"), engine); //Still handle REQUEST the same way
-            server.on("connect", engines); //Handle CONNECT
+        ssl.init((cert) => {
+            server = https.createServer(cert, requestEngine); //Still handle REQUEST the same way
+            server.on("connect", connectEngine); //Handle CONNECT
             server.listen(port);
             console.log(`Violentproxy started on port ${port}, SSL is enabled.`);
         });
+    } else if (unsafe) {
+        //Similar to the mode above, except the proxy server is started in HTTP mode
+        //This is good for localhost, as it would speed up the proxy server
+        console.log("Loading certificate authority...");
+        ssl.init(() => {
+            server = http.createServer(requestEngine);
+            server.on("connect", connectEngine);
+            server.listen(port);
+            console.log(`Violentproxy started on port ${port}, SSL is disabled but HTTPS requests are allowed.`);
+        });
     } else {
-        server = http.createServer(engine); //Only handle REQUEST
+        server = http.createServer(requestEngine); //Only handle REQUEST
         server.listen(port);
-        console.log(`Violentproxy started on port ${port}, SSL is disabled.`);
+        console.log(`Violentproxy started on port ${port}, SSL is disabled but HTTPS requests are allowed.`);
     }
 };
 
@@ -239,7 +251,7 @@ exports.RequestResult = {
  * @param {URL} source - The referrer URL, if exist. Undefined will be passed if it doesn't exist.
  * @param {URL} destination - The requested URL.
  * @param {Header} headers - The headers object as reference, changes to it will be reflected. Be aware that some fields
- ** can't be changed.
+ ** can't be changed, and some fields will cause problems if changed.
  * @return {RequestResult} The decision.
  ** An URL object contains:
  ** @const {string} domain - The domain of the URL, this is provided for convenience and performance.
@@ -257,19 +269,11 @@ exports.requestPatcher = (source, destination, headers) => {
         extra: null,
     };
 };
-
 /**
- * Response patcher.
+ * Response patcher. Refer back to exports.requestPatcher() for more information.
  * @var {Function}
- * @param {URL} source - The referrer URL, if exist. Undefined will be passed if it doesn't exist.
- * @param {URL} destination - The requested URL.
- * @param {Header} headers - The headers object as reference, changes to it will be reflected. Be aware that some fields
- ** can't be changed.
- * @return {string} The patched response text.
- ** An URL object contains:
- ** @const {string} domain - The domain of the URL, this is provided for convenience and performance.
- ** @const {string} path - The path of the URL, this is provided for convenience and performance.
- ** @const {string} fullURL - The full URL.
+ * @param {string} text - The response text.
+ * @return {string} The patched string that will be passed to client.
  */
 exports.responsePatcher = (source, destination, text, headers) => {
     //These parameters are not used
