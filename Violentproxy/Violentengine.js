@@ -14,7 +14,6 @@ const https = require("https"),
  * @const {Module}
  */
 const zlib = require("zlib"),
-    userscript = require("./Violentscript"),
     agent = require("./Violentagent"),
     tls = require("./Violenttls");
 
@@ -80,15 +79,15 @@ let requestEngine = (localReq, localRes) => {
     //This isn't the most efficient way to handle it, but should be good enough if Userscripts don't spam the API
     if (!localReq.url[0] === "/") {
         //TODO: Change this to handle Userscripts API
-        localRes.writeHead(400, "Bad Request", {
+        localRes.writeHead(500, "Not Implemented", {
             "Content-Type": "text/plain",
             "Server": "Violentproxy Proxy Server",
         });
-        localRes.write("The request that Violentproxy received is not valid because it would cause internal request loop.");
+        localRes.write("Userscript callback is not implemented.");
         localRes.end();
     } else {
         //Patch the request
-        exports.requestPatcher(localReq.headers["referer"], localReq.url, localReq.headers, (requestResult) => {
+        exports.onRequest(localReq.headers["referer"], localReq.url, localReq.headers, (requestResult) => {
             //Further process headers so response from remote server can be parsed
             localReq.headers["accept-encoding"] = "gzip, deflate";
             switch (requestResult.result) {
@@ -196,12 +195,12 @@ requestEngine.finalize = (localRes, remoteRes, referer, url, responseData) => {
     };
     //Check MIME type, I can only patch text, changing other types must be done by request patcher
     if (isText(remoteRes.headers["content-type"])) {
-        exports.responsePatcher(referer, url, responseData.toString(), remoteRes.headers, (patchedData) => {
+        exports.onResponse(referer, url, responseData.toString(), remoteRes.headers, (patchedData) => {
             responseData = patchedData;
             onDone();
         });
     } else {
-        exports.responsePatcher(referer, url, null, remoteRes.headers, () => {
+        exports.onResponse(referer, url, null, remoteRes.headers, () => {
             onDone();
         });
     }
@@ -210,7 +209,7 @@ requestEngine.finalize = (localRes, remoteRes, referer, url, responseData) => {
 /**
  * Available TLS servers, they are used to proxy encrypted CONNECT requests.
  * A server key must be like "*.example.com".
- * TODO: Add a timer that remove servers when they are not used for extended amount of time.
+ * TODO: Add a timer that removes servers when they are not used for extended amount of time.
  * @var {Dictionary.<Server>}
  */
 let runningServers = [];
@@ -349,7 +348,7 @@ exports.RequestResult = {
  ** @const {string} path - The path of the URL, this is provided for convenience and performance.
  ** @const {string} fullURL - The full URL.
  */
-exports.requestPatcher = (source, destination, headers, callback) => {
+exports.onRequest = (source, destination, headers, callback) => {
     //These parameters are not used
     void source;
     void destination;
@@ -366,7 +365,7 @@ exports.requestPatcher = (source, destination, headers, callback) => {
  * @param {Function} callback - Refer back to exports.requestPatcher() for more information.
  ** @param {string} patchedText - The patched response text, if apply.
  */
-exports.responsePatcher = (source, destination, text, headers, callback) => {
+exports.onResponse = (source, destination, text, headers, callback) => {
     //These parameters are not used
     void source;
     void destination;
@@ -377,6 +376,12 @@ exports.responsePatcher = (source, destination, text, headers, callback) => {
     } else {
         callback();
     }
+};
+/**
+ * TODO: Userscript callback handler
+ */
+exports.onUserscriptCallback = () => {
+
 };
 
 //Handle server crash

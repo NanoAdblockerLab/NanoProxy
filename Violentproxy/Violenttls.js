@@ -34,7 +34,7 @@ let proxyCert, proxyPrivate;
  * Server certificates cache.
  * Will be a dictionary of domain to certificate. The certificate object can be passed directly to https.createServer().
  * A domain key must be like "*.example.com", the wildcard is required.
- * TODO: Add a timer that remove certificates when they are not used for extended amount of time.
+ * TODO: Add a timer that removes certificates when they are not used for extended amount of time.
  * @var {Dictionary.<Cert>}
  */
 let certCache = {};

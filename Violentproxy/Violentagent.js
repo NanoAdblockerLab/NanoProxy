@@ -12,7 +12,7 @@ let https, http;
  * An agent key must be like "timeout,maxConnection".
  * It can be "5000," (default max connection of Node.js is used).
  * Two special cases are "close" (don't keep alive) and "default" (keep alive with all default settings).
- * TODO: Add a timer that remove agents when they are not used for extended amount of time (except special ones).
+ * TODO: Add a timer that removes agents when they are not used for extended amount of time (except special ones).
  * @var {Dictionary.<Agent>}
  */
 let agentCache = [];
