@@ -4,7 +4,7 @@
  * Load necessary modules.
  * I will use node-forge, as spawning a child-process every time I need to sign a certificate isn't really going
  * to be faster.
- * Also, OpenSSL is a pain to get it to work on Windows.
+ * Also, it's a pain to get OpenSSL to work on Windows.
  * @const {Module}
  */
 const forge = require("node-forge"),
@@ -12,18 +12,20 @@ const forge = require("node-forge"),
 
 /**
  * The place where all certificates will be saved.
+ * The root certificate will be directly placed under this directory, other certificates will have their own folder.
  * @const {String}
  */
-const certFolter = "./Violentproxy/Violentcert";
+const certFolder = "./Violentproxy/Violentcert";
 
 /**
- * The certificate and its key. Will be initialized later.
+ * The root certificate and its key. Will be initialized when init() is called.
  * @const {Certificate}
  */
 let CAcert, CAprivate, CApublic;
 /**
  * Server certificates cache.
  * Will be a dictionary of domain to certificate. The certificate object can be passed directly to https.createServer().
+ * A domain key must be like "*.example.com", the wildcard is required.
  * @var {Dictionary.<Certificate>}
  */
 let certCache = {};
@@ -82,7 +84,7 @@ const CAext = [
         //https://github.com/digitalbazaar/forge/blob/e548bffb2b4e152057adfaf2648c82080b83fdf3/lib/oids.js#L152
         name: "keyUsage",
         digitalSignature: true,
-        //nonRepudiation: true, //I'm not sure if browsers will like it if this is missing, need to test it out
+        //nonRepudiation: true, //TODO: I'm not sure if browsers will like it if this is missing, need to test it out
         keyEncipherment: true,
         dataEncipherment: true,
         keyCertSign: true,
@@ -115,13 +117,14 @@ const CAext = [
         objCA: true,
     },
 ];
+
 /**
- * Server subject, same for all servers, refer to certificate authority subject for more information.
- * This can be the same for all servers because browsers don't care abut CN (common name) anymore and only check subjectAltName.
+ * Server subject, same for all servers, refer to CAsbj for more information.
+ * This can be the same for all servers because browsers don't care about CN (common name) anymore and only check
+ * subjectAltName extension.
  * @const {ServerSubject}
  */
 const serverSbj = [
-    //As browsers don't care about CN anymore, I will drop it and use the same subject for all servers
     {
         shortName: "C", //Country
         value: "World",
@@ -145,12 +148,12 @@ const serverSbj = [
     },
 ];
 /**
- * Get server extension. This cannot be a single global variable as I might be processing two certificates at the
- * same time and the extension is slightly different for each server. The signing process is synchronous but I don't
- * want to deal with potential race conditions.
- * Refer to certificate authority extensions for more information.
+ * Get server extension. This cannot be a single global variable as I might be generating two certificates at the
+ * same time and the extension is slightly different for each server.
+ * Refer to CAext for more information.
  * @function
- * @param {stirng} domain - The domain, include wildcard as appropriate.
+ * @param {stirng} domain - The domain, a version that has wildcard will be included, must be something like "example.com".
+ ** It can't have wildcard and can't be a top level domain ("com" is not valid).
  * @return {ServerExtensions} Server extensions.
  */
 const getServerExt = (domain) => {
@@ -173,6 +176,10 @@ const getServerExt = (domain) => {
                     type: 2, //DNS Name, domain
                     value: domain,
                 },
+                {
+                    type: 2,
+                    value: `*.${domain}`,
+                }
             ],
         },
         {
@@ -184,26 +191,29 @@ const getServerExt = (domain) => {
 };
 
 /**
- * Generate a certificate authority, data will be written to global variables.
- * Certificates will also be saved to a file.
+ * Generate a certificate authority root certificates, data will be written to global variables.
+ * The new root certificate will also be saved to a file.
  * @function
- * @param {Function} callback - The function to call when the certificate authority is ready.
+ * @param {Function} callback - The function to call when the root certificate is ready.
  */
 const genCA = (callback) => {
-    console.log("Creating certificate authority...");
-    //Make the certificate to be valid from yesterday, for a month
-    //I might make this longer when I feel it is stable enough
+    console.log("Generating certificate authority root certificate...");
+    //6 months should be long enough, and reminding the user that he is using a self-signed certificate might
+    //not be a bad thing
+    //I might change this to something longer like one year or two if I think everything is stable enough
     let startDate = new Date();
-    startDate.setDate(startDate.getDate() - 1); //This will work if today is the first day of a month
+    //V8 will handle switching to last month
+    startDate.setDate(startDate.getDate() - 1);
     let endDate = new Date(); //Need to create a new one
-    //The behavior of this is kind of weird when it comes to February, but it's good enough, it's just temporary anyway
-    endDate.setMonth(endDate.getMonth() + 1);
-    //endDate.setFullYear(endDate.getFullYear() + 1);
-    //
+    //V8 will handle switching to next year
+    //The certificate is going to work for 6 months, signed for extra 2 months just in case, when checking
+    //for validity, a new certificate will be generated if there are less than 2 months validity left
+    endDate.setMonth(endDate.getMonth() + 8);
+    //Generate key pair
     forge.pki.rsa.generateKeyPair({ bits: 2048 }, (err, keypair) => {
         //Abort on error
         if (err) {
-            console.log("ERROR: Could not create RSA key pair for certificate authority.");
+            console.log("ERROR: Could not create RSA key pair for the certificate authority root certificate.");
             throw err;
         }
         //Save keys
@@ -220,11 +230,11 @@ const genCA = (callback) => {
         //Signing defaults to SHA1, which is not good anymore
         //https://github.com/digitalbazaar/forge/blob/80c7fd4e21ae83fa236ebb6a2f4748d54aa0dec0/lib/x509.js#L1032
         CAcert.sign(CAprivate, forge.md.sha256.create());
-        //Write certificate to file
+        //Save the root certificate to files
         let done = 0;
         const onDone = () => {
             console.log("Certificate authority created, don't forget to install it.");
-            console.log(`The certificate is located at ${certFolter}/Violentca.crt`);
+            console.log(`The certificate is located at ${certFolder}/Violentca.crt`);
             callback();
         };
         const onTick = (err) => {
@@ -235,33 +245,35 @@ const genCA = (callback) => {
                 (++done === 3) && onDone();
             }
         };
-        //I'll write all 3 files together
-        fs.writeFile(`${certFolter}/Violentca.crt`, forge.pki.certificateToPem(CAcert), onTick);
-        fs.writeFile(`${certFolter}/Violentca.public`, forge.pki.publicKeyToPem(CApublic), onTick);
-        fs.writeFile(`${certFolter}/Violentca.private`, forge.pki.privateKeyToPem(CAprivate), onTick);
+        //I'll write all 3 files in parallel
+        fs.writeFile(`${certFolder}/Violentca.crt`, forge.pki.certificateToPem(CAcert), onTick);
+        fs.writeFile(`${certFolder}/Violentca.public`, forge.pki.publicKeyToPem(CApublic), onTick);
+        fs.writeFile(`${certFolder}/Violentca.private`, forge.pki.privateKeyToPem(CAprivate), onTick);
     });
 };
 /**
- * Load certificate authority. This function assumes the file loaded is valid.
+ * Load certificate authority root certificate. This function assumes the files, if found, are properly formatted.
+ * Errors could be thrown from node-forge, but I won't handle them here as it does print messages that are easy
+ * to understand.
  * @function
  * @param {Function} callback - The function to call when it is done.
- ** @param {boolean} result - True if successful, false otherwise.
+ ** @param {boolean} result - True if files are found, false otherwise.
  */
 const loadCA = (callback) => {
     //Variable naming is safe since this function will abort on the first error
-    fs.readFile(`${certFolter}/Violentca.crt`, (err, data) => {
+    fs.readFile(`${certFolder}/Violentca.crt`, (err, data) => {
         if (err) {
             callback(false);
             return;
         }
         CAcert = forge.pki.certificateFromPem(data);
-        fs.readFile(`${certFolter}/Violentca.public`, (err, data) => {
+        fs.readFile(`${certFolder}/Violentca.public`, (err, data) => {
             if (err) {
                 callback(false);
                 return;
             }
             CApublic = forge.pki.publicKeyFromPem(data);
-            fs.readFile(`${certFolter}/Violentca.private`, (err, data) => {
+            fs.readFile(`${certFolder}/Violentca.private`, (err, data) => {
                 if (err) {
                     callback(false);
                     return;
@@ -274,27 +286,73 @@ const loadCA = (callback) => {
 };
 
 /**
- * Initialize certificate authority, calling sign() without calling this function first
- * will cause problems. This function will throw if the certificate authority could
- * not be initialized.
+ * Generate a server certificate. The new certificate will be saved to cache as well as to files.
+ * @function
+ * @param {string} domainKey - The key for the cache dictionary.
+ * @param {Function} callback - The function to call when it is done.
+ */
+const genCert = (domainKey, callback) => {
+    //TODO
+};
+/**
+ * Load certificate. Refer to loadCA() for more information.
+ * Loaded certificate will be saved to cache.
+ * @function
+ * @param {string} domainKey - The key for the cache dictionary.
+ * @param {Function} callback - The function to call when it is done.
+ ** @param {boolean} result - True if successful, false otherwise.
+ */
+const loadCert = (domainKey, callback) => {
+    //Convert domainKey to file name, the assumption below is safe
+    const path = `${certFolder}/+${domainKey.substring(1)}`;
+    //As I need to keep the cache entry to be "locked" until I'm ready to update it,
+    //I need to construct a temporary object
+    let tempCert = {
+        cert: null,
+        key: null,
+    };
+    //Read the files, this is different than loading root certificate, since https.createServer expects
+    //PEM format and it doesn't need the public key
+    fs.readFile(`${path}/Violentcert.crt`, (err, data) => {
+        if (err) {
+            callback(false);
+            return;
+        }
+        tempCert.cert = data;
+        fs.readFile(`${path}/Violentcert.private`, (err, data) => {
+            if (err) {
+                callback(false);
+                return;
+            }
+            tempCert.private = data;
+        });
+    });
+};
+
+/**
+ * Initialize certificate authority, don't call sign() before receiving callback from this function.
  * @function
  * @param {Funciton} callback - The function to call when Violentssl is ready.
  */
 exports.init = (callback) => {
     loadCA((result) => {
         if (result) {
-            //Successful
-            //I still need to check if it is going to expire, 2 days should be safe
+            //Found, but I still need to check if it is going to expire, 2 months is going to be a safe value
             let line = new Date();
-            line.setDate(line.getDate() + 2);
+            line.setDate(line.getDate() + 14);
             if (line > CAcert.validity.notAfter) {
+                console.log("Certificate authority is going to expire soon, generating a new one...");
+                console.log("Don't uninstall the old certificate yet, as some server certificates are signed with it " +
+                    "and may still be used.");
                 //Generate new one
                 genCA(callback);
             } else {
+                console.log("Certificate authority loaded.");
                 //All good
                 callback();
             }
         } else {
+            console.log("No certificate authority found, generating a new one...");
             //Generate new one
             genCA(callback);
         }
@@ -302,11 +360,66 @@ exports.init = (callback) => {
 };
 
 /**
- * Get a certificate for the current domain, do not pass in domain with wildcard.
+ * Get a certificate for the current domain, pass it in directly, don't add wildcard.
+ * TODO: Test out if Chrome like our shortcut, we are not checking public suffix
  * @function
  * @param {Function} callback - The function to call when the certificate is ready.
- ** @param {Certificate} - An object that can be passed to https.createServer().
+ ** @param {Certificate} - An object that can be directly passed to https.createServer().
  */
 exports.sign = (domain, callback) => {
-
+    let key;
+    //I need to count how many dots there are, RegExp would not be faster as it will
+    //create an array anyway
+    let parts = domain.split(".");
+    if (parts.length === 2) {
+        //Domain is like "example.com", since I can't sign `*.com`, I will sign "example.com"
+        //and "*.example.com"
+        key = `*.${domain}`;
+    } else {
+        //Make the first part to be a wild card
+        parts[0] = "*";
+        key = parts.join(".");
+    }
+    //Load certificate from key
+    let cert = certCache[key];
+    if (!cert) {
+        //Make sure I won't be writting into it at two places
+        certCache[key] = "locked";
+        //Try to load certificates from files
+        loadCert(key, (result) => {
+            if (result) {
+                //Found, but I still need to check if it is going to expire, 7 days is going to be a safe value
+                let line = new Date();
+                line.setDate(line.getDate() + 7);
+                if (line > cert.cert.validity.notAfter) {
+                    //Generate new one
+                    certGen(key, () => {
+                        callback(certCache[key]);
+                    });
+                } else {
+                    //Still good, just use it
+                    callback(certCache[key]);
+                }
+            } else {
+                //Generate a new one
+                certGen(key, () => {
+                    callback(certCache[key]);
+                });
+            }
+        })
+    } else if (cert === "locked") {
+        //There is probably a better way, but this is nice and easy, and I won't be
+        //depending on extra dependencies
+        let token = setInterval(() => {
+            if (certCache[key] !== "locked") {
+                clearTimeout(token);
+                //As locking certificate only occure when I am signing new one, I don't need to
+                //check if it is going to expire
+                callback(certCache[key]);
+            }
+        }, 500);
+    } else {
+        //Certificate found, as this was verified before, I don't need to check for expiry date
+        callback(cert);
+    }
 };

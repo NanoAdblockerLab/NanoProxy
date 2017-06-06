@@ -200,7 +200,7 @@ const finalize = (localRes, remoteRes, url, responseText) => {
  ** {Object} [cert=undefined] - The certificate for HTTPS mode. Leave undefined to use HTTP mode.
  ** {boolean} [unsafe = false] - Whether HTTPS to HTTP proxy is allowed.
  */
-exports.start = (config) => {
+exports.start = (config) => { //TODO: This is completely broken now...
     config = config || {};
     //Load configuration
     const port = config.port || 12345;
@@ -238,19 +238,22 @@ exports.RequestResult = {
  * @var {Function}
  * @param {URL} source - The referrer URL, if exist. Undefined will be passed if it doesn't exist.
  * @param {URL} destination - The requested URL.
+ * @param {Header} headers - The headers object as reference, changes to it will be reflected. Be aware that some fields
+ ** can't be changed.
  * @return {RequestResult} The decision.
  ** An URL object contains:
  ** @const {string} domain - The domain of the URL, this is provided for convenience and performance.
  ** @const {string} path - The path of the URL, this is provided for convenience and performance.
  ** @const {string} fullURL - The full URL.
  */
-exports.requestPatcher = (source, destination) => {
+exports.requestPatcher = (source, destination, headers) => {
     //These parameters are not used
     void source;
     void destination;
+    void headers;
     //This is just an example
     return {
-        result: exports.requestResult.Allow,
+        result: exports.requestResult.Allow, //The reference will be different when replacing this dummy patcher
         extra: null,
     };
 };
@@ -260,16 +263,19 @@ exports.requestPatcher = (source, destination) => {
  * @var {Function}
  * @param {URL} source - The referrer URL, if exist. Undefined will be passed if it doesn't exist.
  * @param {URL} destination - The requested URL.
+ * @param {Header} headers - The headers object as reference, changes to it will be reflected. Be aware that some fields
+ ** can't be changed.
  * @return {string} The patched response text.
  ** An URL object contains:
  ** @const {string} domain - The domain of the URL, this is provided for convenience and performance.
  ** @const {string} path - The path of the URL, this is provided for convenience and performance.
  ** @const {string} fullURL - The full URL.
  */
-exports.responsePatcher = (source, destination, text) => {
+exports.responsePatcher = (source, destination, text, headers) => {
     //These parameters are not used
     void source;
     void destination;
+    void headers;
     //This is just an example
     if (text) {
         return text.replace(/(<head[^>]*>)/i, "$1" + `<script>console.log("Hello from Violentproxy :)");</script>`);
