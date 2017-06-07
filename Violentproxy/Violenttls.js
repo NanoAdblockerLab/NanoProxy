@@ -1,3 +1,5 @@
+//5 TODOs to go
+
 //TLS engine for Violentproxy
 //Note that "SSL" often means "SSL/TLS", OpenSSL fully supports TLS related calculations and functions
 //As of 2017, SSL is no longer used and its support is dropped by modern browsers
@@ -74,9 +76,9 @@ const Cert = class {
         process.nextTick(call);
     }
     /**
-     * Schedule a function to call once the certificate is ready
+     * Schedule a function to call once the certificate is ready.
      * @method
-     * @param {Function} func - The funtion to call
+     * @param {Function} func - The funtion to call.
      */
     onceReady(func) {
         if (this.busy) {
@@ -362,7 +364,7 @@ const genCert = (domainKey, callback) => {
     startDate.setDate(startDate.getDate() - 1);
     let endDate = new Date();
     endDate.setDate(endDate.getDate() + 35); //5 weeks
-    forge.pki.rsa.generateKeyPair({ bits: 1024 }, (err, keypair) => {
+    forge.pki.rsa.generateKeyPair({ bits: 2048 }, (err, keypair) => {
         if (err) {
             console.log(`ERROR: Could not create RSA key pair for server certificate for ${domainKey}.`);
             throw err;
@@ -475,6 +477,7 @@ exports.init = (callback) => {
  * Get a certificate for the current domain, pass it in directly, don't add wildcard.
  * TODO: Test out if Chrome like our shortcut, we are not checking public suffix.
  * @function
+ * @param {string} domain - The domain, must be something like "example.com".
  * @param {Function} callback - The function to call when the certificate is ready.
  ** @param {Certificate} - An object that can be directly passed to https.createServer().
  */
@@ -509,7 +512,9 @@ exports.sign = (domain, callback) => {
                 } else {
                     //Still good, just use it
                     //Schedule for next tick to make it asynchronous
-                    process.nextTick(callback(certCache[key].value));
+                    process.nextTick(() => {
+                        callback(certCache[key].value)
+                    });
                 }
             } else {
                 //Generate a new one
@@ -525,6 +530,8 @@ exports.sign = (domain, callback) => {
         });
     } else {
         //Certificate found, as this was verified before, I don't need to check for expiry date
-        process.nextTick(callback(certCache[key].value));
+        process.nextTick(() => {
+            callback(certCache[key].value)
+        });
     }
 };

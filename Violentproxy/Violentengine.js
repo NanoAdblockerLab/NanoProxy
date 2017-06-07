@@ -208,7 +208,7 @@ requestEngine.finalize = (localRes, remoteRes, referer, url, responseData) => {
 
 /**
  * Available TLS servers, they are used to proxy encrypted CONNECT requests.
- * A server key must be like "*.example.com".
+ * A server key must be like "example.com".
  * TODO: Add a timer that removes servers when they are not used for extended amount of time.
  * @var {Dictionary.<Server>}
  */
@@ -218,7 +218,72 @@ let runningServers = [];
  * @class
  */
 const Server = class {
+    /**
+     * Construct the object and initialize the server.
+     * @constructor
+     * @param {string} domain - The domain, must be something like "example.com".
+     * 
+     */
+    constructor(domain) {
+        this.available = false;
+        this.server = null;
+        this.onceAvailableCallback = [];
+        tls.sign(domain, (cert) => {
+            this.server = https.createServer(cert);
+        });
+    }
+    /**
+     * Schedule a function to call once the server is available again.
+     * @method
+     * @param {Function} func - The function to call.
+     */
+    onceAvailable(func) {
 
+    }
+};
+/**
+ * Get a TLS server for the current host name.
+ * TODO: Test out if Chrome like our shortcut, we are not checking public suffix.
+ * @param {string} host - The current host name.
+ * @param {Function} callback - The function to call when a TLS server is ready.
+ ** @param {boolean} success - Whether host name is valid, a server will be supplied if the host name is valid.
+ ** @param {TLSServer} server - A TLS server for the current host name.
+ */
+const getServer = (host, callback) => {
+    let parts = host.split(".");
+    let domain;
+    if (parts.length < 2) {
+        if (host === "localhost") {
+            //TODO: Userscript callback in TLS mode
+            throw "Not implemented";
+        } else {
+            //Host name not valid
+            process.nextTick(() => {
+                callback(false);
+            });
+        }
+    } else if (parts.lengh === 2) {
+        domain = host;
+    } else {
+        parts.shift();
+        domain = parts.join(".");
+    }
+    //Check if I already have a server
+    if (!runningServers[domain]) {
+        //Create new one
+        runningServers[domain] = new Server(domain);
+        runningServers[domain].onceAvailable(() => {
+            callback(true, runningServers[domain].server);
+        });
+    } else if (!runningServers[domain].available) {
+        runningServers[domain].onceAvailable(() => {
+            callback(true, runningServers[domain].server);
+        });
+    } else {
+        process.nextTick(() => {
+            callback(true, runningServers[domain].server);
+        });
+    }
 };
 
 /**
