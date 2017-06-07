@@ -60,6 +60,7 @@ const isText = (mimeType) => {
  * @param {ServerResponse} localRes - The local response object.
  */
 let requestEngine = (localReq, localRes) => {
+    //TODO: What about WebSocket?
     console.log(`INFO: REQUEST request received: ${localReq.url}`);
     //Prepare request
     let options
@@ -217,6 +218,7 @@ requestEngine.finalize = (localRes, remoteRes, referer, url, responseData) => {
 let runningServers = [];
 /**
  * Server object, this prevents issues that can be caused in race condition.
+ * TODO: What about WebSocket?
  * @class
  */
 const Server = class {
@@ -288,6 +290,19 @@ const getServer = (host, callback) => {
     }
 };
 
+//Initialize SNI server
+runningServers["dynamic"] = new (class extends Server {
+    /**
+     * The constructor for SNI server.
+     * @constructor
+     */
+    constructor() {
+        this.available = false;
+        this.server = https.createServer({});
+        this.onceAvailableCallback = [];
+    }
+})();
+
 /**
  * Proxy engine for CONNECT requests.
  * In this mode, the user agent will ask me to establish a tunnel to the target host. As I can't decrypt the data that is going over,
@@ -325,9 +340,12 @@ let connectEngine = (localReq, localSocket, localHead) => {
 
 };
 /**
- * Detect TLS handshake from incoming data, here is a simple technique to do it:
- * https://gist.github.com/tg-x/835636
- * But I don't think this detection method is 100% safe, so I will also fallback to unencrypted mode if the actual handshake fails
+ * Detect TLS handshake from incoming data.
+ * http://blog.bjrn.se/2012/07/fun-with-tls-handshake.html
+ * https://tools.ietf.org/html/rfc5246
+ * https://github.com/openssl/openssl/blob/a9c85ceaca37b6b4d7e4c0c13c4b75a95561c2f6/include/openssl/tls1.h#L78
+ * The first 3 bytes should be either:
+ * 0x16 0x03 0x01, 0x16 0x03 0x02, or 0x16 0x03 0x03
  */
 connectEngine.onHandshake = (data) => {
 
@@ -456,6 +474,6 @@ process.on("uncaughtException", (err) => {
     console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     console.log("!!!!! Violentproxy encountered a fatal error and is about to crash !!!!!");
     console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    console.log("If you believe this is a bug, please inform us at https://github.com/Violentproxy/Violentproxy/issues");
+    console.log("If you believe this is caused by a bug, please inform us at https://github.com/Violentproxy/Violentproxy/issues");
     throw err;
 });

@@ -182,6 +182,7 @@ const CAext = [
  * Server subject, same for all servers, refer to CAsbj for more information.
  * This can be the same for all servers because browsers don't care about CN (common name) anymore and only check
  * subjectAltName extension.
+ * https://www.chromestatus.com/feature/4981025180483584
  * @const {ServerSubject}
  */
 const serverSbj = [
@@ -236,6 +237,8 @@ const getServerExt = (domain) => {
         {
             name: "subjectAltName",
             altNames: [
+                //I don't need to worry about IP as no real certificate authority allows raw IP signing
+                //https://ca.godaddy.com/help/can-i-request-a-certificate-for-an-intranet-name-or-ip-address-6935
                 {
                     type: 2, //DNS Name, domain
                     value: domain,
