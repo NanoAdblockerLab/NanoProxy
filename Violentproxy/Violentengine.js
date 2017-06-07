@@ -336,7 +336,7 @@ connectEngine.onHandshake = (data) => {
  * @function
  * @param {Object} config - The configuration object.
  ** {integer} [config.port=12345] - The port that the proxy server listens.
- ** {boolean} [useTLS=false] - Whether start the proxy server in HTTPS mode.
+ ** {boolean} [useTLS=false] - Whether the proxy server should be started in HTTPS mode.
  ** {boolean} [unsafe=false] - Whether HTTPS to HTTP proxy is allowed.
  */
 exports.start = (config) => {

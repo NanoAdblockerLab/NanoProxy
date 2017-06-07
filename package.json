@@ -6,7 +6,7 @@
   "dependencies": {
     "node-forge": ">=0.7.1"
   },
-  "description": "A free and open source implementation of proxy engine for content patching.",
+  "description": "A free and open source implementation of an explicit proxy for content tampering.",
   "engines": {
     "node": ">=8.0.0"
   },

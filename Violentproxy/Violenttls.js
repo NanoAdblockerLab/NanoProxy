@@ -112,8 +112,8 @@ const CAsbj = [
         value: "World",
     },
     {
-        shortName: "CN", //Domain, IP, etc. For certificate authority, it's different, it can be anything
-        value: "ViolentCA",
+        shortName: "CN", //Common Name, can be anything
+        value: "Violentca",
     },
     //Optional
     {
@@ -200,6 +200,10 @@ const serverSbj = [
     {
         shortName: "ST", //State, province, etc.
         value: "World",
+    },
+    {
+        shortName: "CN", //Connon Name, can be anything
+        value: "Violentserver",
     },
     //Optional
     {
