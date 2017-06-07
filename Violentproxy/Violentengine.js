@@ -368,7 +368,7 @@ exports.start = (config) => {
     let server;
     //Create server
     if (useTLS) {
-        console.log("INFO: Loading certificate authority...");
+        console.log("INFO: Loading certificate authority root certificate...");
         tls.init((cert) => {
             server = https.createServer(cert, requestEngine); //Still handle REQUEST the same way
             server.on("connect", connectEngine); //Handle CONNECT
@@ -378,7 +378,7 @@ exports.start = (config) => {
     } else if (unsafe) {
         //Similar to the mode above, except the proxy server itself is started in HTTP mode
         //This is good for localhost, as it would speed up the proxy server
-        console.log("INFO: Loading certificate authority...");
+        console.log("INFO: Loading certificate authority root certificate...");
         tls.init(() => {
             server = http.createServer(requestEngine);
             server.on("connect", connectEngine);
