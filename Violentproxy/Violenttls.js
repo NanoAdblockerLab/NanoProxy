@@ -263,7 +263,7 @@ const getServerExt = (domain) => {
  * @param {Function} callback - The function to call when the root certificate is ready.
  */
 const genCA = (proxyDNS, proxyIP, callback) => {
-    console.log("Generating certificate authority root certificate...");
+    console.log("INFO: Generating certificate authority root certificate...");
     //6 months should be long enough, and reminding the user that he is using a self-signed certificate might
     //not be a bad thing
     //I might change this to something longer like one year or two if I think everything is stable enough
@@ -299,10 +299,8 @@ const genCA = (proxyDNS, proxyIP, callback) => {
         //Save the root certificate to files
         let done = 0;
         const onDone = () => {
-            console.log("Certificate authority root certificate generated, don't forget to install it.");
-            console.log(`The certificate is located at ${certFolder}/Violentca.crt`);
-            //Generate certificate for the proxy server
-            console.log("Generating certificate for the proxy server...");
+            console.log("NOTICE: Certificate authority root certificate generated, don't forget to install it.");
+            console.log(`NOTICE: The certificate is located at ${certFolder}/Violentca.crt`);
             //TODO: Test out to see if Chrome accepts the root certificate for the proxy server itself
             callback();
         };
@@ -363,7 +361,7 @@ const loadCA = (callback) => {
  */
 const genCert = (domainKey, callback) => {
     const path = `${certFolder}/+${domainKey.substring(1)}`;
-    console.log(`Generating server certificate for ${domainKey}...`);
+    console.log(`INFO: Generating server certificate for ${domainKey}...`);
     let startDate = new Date();
     startDate.setDate(startDate.getDate() - 1);
     let endDate = new Date();
@@ -385,7 +383,7 @@ const genCert = (domainKey, callback) => {
         serverCert.sign(CAprivate, forge.md.sha256.create());
         let done = 0;
         const onDone = () => {
-            console.log(`Server certificate for ${domainKey} is generated.`);
+            console.log(`INFO: Server certificate for ${domainKey} is generated.`);
             certCache[domainKey].setVal({
                 cert: forge.pki.certificateToPem(serverCert),
                 key: forge.pki.privateKeyToPem(privateKey),
@@ -459,18 +457,18 @@ exports.init = (callback) => {
             let line = new Date();
             line.setDate(line.getDate() + 14);
             if (line > CAcert.validity.notAfter) {
-                console.log("Certificate authority is going to expire soon, generating a new one...");
-                console.log("Don't uninstall the old certificate yet, as some server certificates are signed with it " +
-                    "and may still be used.");
+                console.log("NOTICE: Certificate authority is going to expire soon, generating a new one...");
+                console.log("NOTICE: Don't uninstall the old certificate yet, as some server certificates are signed " +
+                    "with it and may still be used.");
                 //Generate new one
                 genCA(onEnd);
             } else {
-                console.log("Certificate authority loaded.");
+                console.log("INFO: Certificate authority loaded.");
                 //All good
                 onEnd();
             }
         } else {
-            console.log("No certificate authority found, generating a new one...");
+            console.log("INFO: No certificate authority found, generating a new one...");
             //Generate new one
             genCA(onEnd);
         }

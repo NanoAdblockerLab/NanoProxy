@@ -60,7 +60,7 @@ const isText = (mimeType) => {
  * @param {ServerResponse} localRes - The local response object.
  */
 let requestEngine = (localReq, localRes) => {
-    console.log(`REQUEST request received: ${localReq.url}`);
+    console.log(`INFO: REQUEST request received: ${localReq.url}`);
     //Prepare request
     let options
     try {
@@ -163,8 +163,10 @@ let requestEngine = (localReq, localRes) => {
                     localRes.destroy();
                 });
             });
-            request.on("error", () => {
-                //This can error out if the address is not valid
+            request.on("error", (err) => {
+                console.log(`WARNING: An error occurred when handling REQUEST request to ${localReq.url}, this usually means ` +
+                    `the client sent an invalid request or you are not connected to the Internet.`);
+                console.log(err.message);
                 localRes.destroy();
             });
             request.end();
@@ -302,17 +304,17 @@ const getServer = (host, callback) => {
 let connectEngine = (localReq, localSocket, localHead) => {
     //If I think it's OK to give up control over the communication, I can pipe the request over like the example here:
     //https://newspaint.wordpress.com/2012/11/05/node-js-http-and-https-proxy/
-    console.log(`CONNECT request received: ${localReq.url}`);
+    console.log(`INFO: CONNECT request received: ${localReq.url}`);
     //Parse request
     let [host, port, ...rest] = localReq.url.split(":"); //Expected to be something like example.com:443
     if (rest.length > 0 || !port || !host || host.includes("*")) {
-        //Not valid, drop the connection
+        console.log(`WARNING: CONNECT request to ${localReq.url} is not valid.`);
         localSocket.destroy();
         return;
     }
     port = parseInt(port);
     if (isNaN(port) || port < 0 || port > 65535) {
-        //Port not valid, drop the connection
+        console.log(`WARNING: CONNECT request to ${localReq.url} is not valid.`);
         localSocket.destroy();
         return;
     }
@@ -348,27 +350,27 @@ exports.start = (config) => {
     let server;
     //Create server
     if (useTLS) {
-        console.log("Loading certificate authority...");
+        console.log("INFO: Loading certificate authority...");
         tls.init((cert) => {
             server = https.createServer(cert, requestEngine); //Still handle REQUEST the same way
             server.on("connect", connectEngine); //Handle CONNECT
             server.listen(port);
-            console.log(`Violentproxy started on port ${port}, TLS is enabled.`);
+            console.log(`INFO: Violentproxy started on port ${port}, TLS is enabled.`);
         });
     } else if (unsafe) {
         //Similar to the mode above, except the proxy server itself is started in HTTP mode
         //This is good for localhost, as it would speed up the proxy server
-        console.log("Loading certificate authority...");
+        console.log("INFO: Loading certificate authority...");
         tls.init(() => {
             server = http.createServer(requestEngine);
             server.on("connect", connectEngine);
             server.listen(port);
-            console.log(`Violentproxy started on port ${port}, TLS is disabled but HTTPS requests are allowed.`);
+            console.log(`INFO: Violentproxy started on port ${port}, TLS is disabled but HTTPS requests are allowed.`);
         });
     } else {
         server = http.createServer(requestEngine); //Only handle REQUEST
         server.listen(port);
-        console.log(`Violentproxy started on port ${port}, TLS is disabled and HTTPS requests are disallowed.`);
+        console.log(`INFO: Violentproxy started on port ${port}, TLS is disabled and HTTPS requests are disallowed.`);
     }
 };
 
@@ -451,9 +453,9 @@ exports.onUserscriptCallback = () => {
 
 //Handle server crash
 process.on("uncaughtException", (err) => {
-    console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    console.log("!!!!!Violentproxy encountered a fatal error and is about to crash!!!!!");
-    console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    console.log("!!!!! Violentproxy encountered a fatal error and is about to crash !!!!!");
+    console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     console.log("If you believe this is a bug, please inform us at https://github.com/Violentproxy/Violentproxy/issues");
     throw err;
 });
