@@ -36,7 +36,7 @@ const isText = (mimeType) => {
         //Assume not text if the server didn't send over the content type
         return false;
     } else {
-        return (mimeType.startsWith("text/")) || mimeType.endsWith("/xhtml+xml") || mimeType.endsWith("/xml");
+        return mimeType.startsWith("text/") || mimeType.endsWith("/xhtml+xml") || mimeType.endsWith("/xml");
     }
 };
 
@@ -131,6 +131,7 @@ let requestEngine = (localReq, localRes) => {
                         encoding = encoding.toLowerCase();
                     }
                     if (encoding === "gzip" || encoding === "deflate") {
+                        //TODO: Check type here and decide whether or not I should decompress the data here
                         zlib.unzip(data, (err, result) => {
                             if (err) {
                                 //Could not parse, drop the connection
@@ -334,9 +335,11 @@ let connectEngine = (localReq, localSocket, localHead) => {
  * https://tools.ietf.org/html/rfc5246
  * https://github.com/openssl/openssl/blob/a9c85ceaca37b6b4d7e4c0c13c4b75a95561c2f6/include/openssl/tls1.h#L65
  * The first 2 bytes should be 0x16 0x03, and the 3rd byte should be 0x01, 0x02, 0x03, or 0x04.
+ * TODO: Detect if SNI is used, these might be useful:
+ *       https://tools.ietf.org/html/rfc6066#section-3 https://tools.ietf.org/html/rfc3546#section-3.1
  */
 connectEngine.onHandshake = (data) => {
-
+    //TODO
 };
 
 /**
@@ -385,7 +388,9 @@ exports.start = (config) => {
  * @const {Enumeration}
  */
 exports.RequestResult = {
-    //Process the request normally
+    /**
+     * Process the request normally. The response will be processed by response patcher later.
+     */
     Allow: 0,
     /**
      * Return a HTTP 200 response with an empty body.
@@ -394,7 +399,9 @@ exports.RequestResult = {
      * @const {stirng} server - The server name, defaults to "Apache/2.4.7 (Ubuntu)".
      */
     Empty: 1,
-    //Immediately close the connection
+    /**
+     * Immediately close the connection.
+     */
     Deny: 2,
     /**
      * Redirect the request to another address or to a local resource, the user agent will not be able to know
@@ -432,10 +439,10 @@ exports.onRequest = (source, destination, headers, callback) => {
     });
 };
 /**
- * Response patcher. Refer back to exports.requestPatcher() for more information.
+ * Response patcher. Refer back to exports.onRequest() for more information.
  * @var {Function}
  * @param {string|undefined} text - The response text if the response is text, undefined otherwise.
- * @param {Function} callback - Refer back to exports.requestPatcher() for more information.
+ * @param {Function} callback - Refer back to exports.onRequest() for more information.
  ** @param {string} patchedText - The patched response text, if apply.
  */
 exports.onResponse = (source, destination, text, headers, callback) => {
