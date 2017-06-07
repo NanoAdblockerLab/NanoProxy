@@ -343,9 +343,8 @@ let connectEngine = (localReq, localSocket, localHead) => {
  * Detect TLS handshake from incoming data.
  * http://blog.bjrn.se/2012/07/fun-with-tls-handshake.html
  * https://tools.ietf.org/html/rfc5246
- * https://github.com/openssl/openssl/blob/a9c85ceaca37b6b4d7e4c0c13c4b75a95561c2f6/include/openssl/tls1.h#L78
- * The first 3 bytes should be either:
- * 0x16 0x03 0x01, 0x16 0x03 0x02, or 0x16 0x03 0x03
+ * https://github.com/openssl/openssl/blob/a9c85ceaca37b6b4d7e4c0c13c4b75a95561c2f6/include/openssl/tls1.h#L65
+ * The first 2 bytes should be 0x16 0x03, and the 3rd byte should be 0x01, 0x02, 0x03, or 0x04.
  */
 connectEngine.onHandshake = (data) => {
 
