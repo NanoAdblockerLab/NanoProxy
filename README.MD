@@ -9,7 +9,11 @@ to create a better browsing experience.
 
 This should be possible in theory, it may or may not work out in the end. 
 
-But hey, it does start, try it out: `node demo.js`. 
+But hey, it does start, try it out: 
+```Bash
+node init.js
+curl -x localhost:12345 example.com
+```
 
 ![screenshot](http://i.imgur.com/itQBQjq.png)
 

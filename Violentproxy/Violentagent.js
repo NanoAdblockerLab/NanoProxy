@@ -7,7 +7,7 @@
  * Modules, will be passed over from the core engine when exports.init() is called.
  * @const {Module}
  */
-let https, http;
+const {https, http} = global;
 
 /**
  * The cache of available HTTP agents.
@@ -23,21 +23,11 @@ let agentCache = [];
  * @var {Dictionary.<Agent>}
  */
 let tlsAgentCache = [];
-
-/**
- * Initialize agents manager.
- * @function
- * @param {Modules} modules - The required modules.
- */
-exports.init = (modules) => {
-    https = modules.https;
-    http = modules.http;
-    //Initialize common agents
-    agentCache["close"] = new http.Agent({ keepAlive: false });
-    tlsAgentCache["close"] = new https.Agent({ keepAlive: false });
-    agentCache["default"] = new http.Agent({ keepAlive: true });
-    tlsAgentCache["default"] = new https.Agent({ keepAlive: true });
-};
+//Initialize common agents
+agentCache["close"] = new http.Agent({ keepAlive: false });
+tlsAgentCache["close"] = new https.Agent({ keepAlive: false });
+agentCache["default"] = new http.Agent({ keepAlive: true });
+tlsAgentCache["default"] = new https.Agent({ keepAlive: true });
 
 /**
  * Get an Agent that fits the requirements.

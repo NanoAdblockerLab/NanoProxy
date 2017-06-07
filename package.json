@@ -12,11 +12,11 @@
   },
   "homepage": "https://github.com/Violentproxy/Violentproxy",
   "license": "GNU GPL v3",
-  "main": "demo.js",
+  "main": "init.js",
   "name": "violentproxy",
   "repository": "https://github.com/Violentproxy/Violentproxy",
   "scripts": {
-    "start": "node demo.js"
+    "start": "node init.js"
   },
   "version": "0.0.1"
 }

@@ -12,8 +12,7 @@
  * Also, it's a pain to get OpenSSL to work on Windows.
  * @const {Module}
  */
-const forge = require("node-forge"),
-    fs = require("fs");
+const {forge, fs} = global;
 
 /**
  * The place where all certificates will be saved.

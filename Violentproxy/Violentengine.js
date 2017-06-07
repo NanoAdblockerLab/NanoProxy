@@ -5,23 +5,12 @@
  * Load network modules.
  * @const {Module}
  */
-const https = require("https"),
-    http = require("http"),
-    net = require("net"),
-    url = require("url");
+const {https, http, net, url} = global;
 /**
  * Load other modules
  * @const {Module}
  */
-const zlib = require("zlib"),
-    agent = require("./Violentagent"),
-    tls = require("./Violenttls");
-
-//Initialize some modules
-agent.init({
-    https: https,
-    http: http,
-});
+const {zlib, agent, tls} = global;
 
 /**
  * Get MIME type from header.
@@ -291,7 +280,7 @@ const getServer = (host, callback) => {
 };
 
 //Initialize SNI server
-runningServers["dynamic"] = new (class extends Server {
+runningServers["dynamic"] = new (class {
     /**
      * The constructor for SNI server.
      * @constructor
