@@ -10,7 +10,7 @@ const {https, http, net, url} = global;
  * Load other modules
  * @const {Module}
  */
-const {zlib, agent, tls} = global;
+const {agent, zlib, tls} = global;
 
 /**
  * Get MIME type from header.
@@ -18,10 +18,10 @@ const {zlib, agent, tls} = global;
  * @param {string} [def="text/html"] - The default value.
  */
 const getType = (str, def = "text/html") => {
-    const parts = str.split(",");
+    const parts = str.split(/,|;/);
     for (let i = 0; i < parts.length; i++) {
-        if (!parts[i].includes("*")) {
-            return parts[i];
+        if (!parts[i].includes("*") && parts[i].includes("/")) {
+            return parts[i].trim();
         }
     }
     return def;
@@ -44,6 +44,7 @@ const isText = (mimeType) => {
  * Proxy engine for REQUEST request.
  * In this mode, the user agent gives me the full control, so I don't need to create servers on the fly.
  * This is generally used for HTTP requests.
+ * TODO: Add WebSocket and WebSocket Secure handling
  * @function
  * @param {IncomingMessage} localReq - The local request object.
  * @param {ServerResponse} localRes - The local response object.
@@ -75,56 +76,62 @@ let requestEngine = (localReq, localRes) => {
         });
         localRes.write("Userscript callback is not implemented.");
         localRes.end();
-    } else {
-        //Patch the request
-        exports.onRequest(localReq.headers["referer"], localReq.url, localReq.headers, (requestResult) => {
-            //Further process headers so response from remote server can be parsed
-            localReq.headers["accept-encoding"] = "gzip, deflate";
-            switch (requestResult.result) {
-                case exports.RequestResult.Allow:
-                    //Do nothing, let the request pass
-                    break;
-                case exports.RequestResult.Empty:
-                    localRes.writeHead(200, "OK", {
-                        "Content-Type": requestResult.type || getType(localReq.headers["accept"]),
-                        "Server": requestResult.server || "Apache/2.4.7 (Ubuntu)",
-                    });
-                    localRes.end();
-                    return; //Stop here
-                case exports.RequestResult.Deny:
-                    localRes.destroy();
-                    return; //Stop here
-                case exports.RequestResult.Redirect:
-                    if (requestResult.redirectLocation === null) {
-                        //Just write back the redirected text
-                        localRes.writeHead(200, "OK", requestResult.headers || {
-                            "Content-Type": "text/plain",
-                            "Server": "Apache/2.4.7 (Ubuntu)",
-                        });
-                        localRes.write(requestResult.redirectText);
-                        localRes.end();
-                        return;
-                    } else {
-                        //I expect the patcher to return valid URL
-                        options = url.parse(requestResult.redirectLocation);
-                        //Copy the rest of the options again
-                        options.headers = localReq.headers;
-                        options.agent = agent.getAgent(localReq.httpVersion, localReq.headers, options.protocol === "https:");
-                        options.auth = localReq.auth;
-                        break;
-                    }
-                default:
-                    throw "Unexpected request result";
-            }
-            //Proxy request
-            let request = (options.protocol === "https:" ? https : http).request(options, (remoteRes) => {
-                //remoteRes is http.IncomingMessage, which is also a Stream
-                let data = [];
-                remoteRes.on("data", (chunk) => {
-                    data.push(chunk);
+        return;
+    }
+    //Patch the request
+    exports.onRequest(localReq.headers["referer"], localReq.url, localReq.headers, (requestResult) => {
+        //Further process headers so response from remote server can be parsed
+        localReq.headers["accept-encoding"] = "gzip, deflate";
+        switch (requestResult.result) {
+            case exports.RequestResult.Allow:
+                //Do nothing, let the request pass
+                break;
+            case exports.RequestResult.Empty:
+                localRes.writeHead(200, "OK", {
+                    "Content-Type": requestResult.type || getType(localReq.headers["accept"]),
+                    "Server": requestResult.server || "Apache/2.4.7 (Ubuntu)",
                 });
-                remoteRes.on("end", () => {
-                    data = Buffer.concat(data);
+                localRes.end();
+                return; //Stop here
+            case exports.RequestResult.Deny:
+                localRes.destroy();
+                return; //Stop here
+            case exports.RequestResult.Redirect:
+                if (requestResult.redirectLocation === null) {
+                    //Just write back the redirected text
+                    localRes.writeHead(200, "OK", requestResult.headers || {
+                        "Content-Type": "text/plain",
+                        "Server": "Apache/2.4.7 (Ubuntu)",
+                    });
+                    localRes.write(requestResult.redirectText);
+                    localRes.end();
+                    return;
+                } else {
+                    //I expect the patcher to return valid URL
+                    options = url.parse(requestResult.redirectLocation);
+                    //Copy the rest of the options again
+                    options.headers = localReq.headers;
+                    options.agent = agent.getAgent(localReq.httpVersion, localReq.headers, options.protocol === "https:");
+                    options.auth = localReq.auth;
+                    break;
+                }
+            default:
+                throw "Unexpected request result";
+        }
+        //Proxy request
+        let request = (options.protocol === "https:" ? https : http).request(options, (remoteRes) => {
+            //remoteRes is http.IncomingMessage, which is also a Stream
+            let data = [];
+            remoteRes.on("data", (chunk) => {
+                data.push(chunk);
+            });
+            remoteRes.on("end", () => {
+                data = Buffer.concat(data);
+                //Check content type, I can only patch text
+                //I'm able to change the header of non-text response though
+                if (isText(getType(remoteRes.headers["content-type"]))) {
+                    //So I don't need to encode it again
+                    remoteRes.headers["content-encoding"] = "identity";
                     //Decode response
                     let encoding = remoteRes.headers["content-encoding"];
                     if (encoding) {
@@ -137,34 +144,37 @@ let requestEngine = (localReq, localRes) => {
                                 //Could not parse, drop the connection
                                 localRes.destroy();
                             } else {
-                                requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, result);
+                                requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, result);
                             }
                         });
                     } else {
                         //Assume identity
-                        requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, data);
+                        requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, data);
                     }
-                });
-                remoteRes.on("error", () => {
-                    //Something went wrong, drop the local connection
-                    localRes.destroy();
-                });
-                remoteRes.on("aborted", () => {
-                    //Remote server disconnected prematurely, drop the local connection
-                    localRes.destroy();
-                });
+                } else {
+                    //Not text
+                    requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, false, data);
+                }
             });
-            request.on("error", (err) => {
-                console.log(`WARNING: An error occurred when handling REQUEST request to ${localReq.url}, this usually means ` +
-                    `the client sent an invalid request or you are not connected to the Internet.`);
-                console.log(err.message);
+            remoteRes.on("error", () => {
+                //Something went wrong, drop the local connection
                 localRes.destroy();
             });
-            request.end();
-            //Abort request when local client disconnects
-            localReq.on("aborted", () => { request.abort(); });
+            remoteRes.on("aborted", () => {
+                //Remote server disconnected prematurely, drop the local connection
+                localRes.destroy();
+            });
         });
-    }
+        request.on("error", (err) => {
+            console.log(`WARNING: An error occurred when handling REQUEST request to ${localReq.url}, this usually means ` +
+                `the client sent an invalid request or you are not connected to the Internet.`);
+            console.log(err.message);
+            localRes.destroy();
+        });
+        request.end();
+        //Abort request when local client disconnects
+        localReq.on("aborted", () => { request.abort(); });
+    });
 };
 /**
  * Process final request result of a REQUEST request and send it to client.
@@ -173,21 +183,17 @@ let requestEngine = (localReq, localRes) => {
  * @param {http.IncomingMessage} remoteRes - The object that contains data about server response.
  * @param {string} referer - The referrer, if exist.
  * @param {string} url - The request URL.
+ * @param {boolean} isText - Whether the response data is text.
  * @param {Any} responseData - The response data.
  */
-requestEngine.finalize = (localRes, remoteRes, referer, url, responseData) => {
+requestEngine.finalize = (localRes, remoteRes, referer, url, isText, responseData) => {
     const onDone = () => {
-        //So I don't need to encode it again
-        remoteRes.headers["content-encoding"] = "identity";
-        //The length will be changed when it is patched, let the browser figure out how long it actually is
-        //I can probably count that, I'll pass in an updated length if removing the header causes problems
-        delete remoteRes.headers["content-length"];
+        remoteRes.headers["content-length"] = responseData.length;
         localRes.writeHead(remoteRes.statusCode, remoteRes.statusMessage, remoteRes.headers);
         localRes.write(responseData);
         localRes.end();
     };
-    //Check MIME type, I can only patch text, changing other types must be done by request patcher
-    if (isText(remoteRes.headers["content-type"])) {
+    if (isText) {
         exports.onResponse(referer, url, responseData.toString(), remoteRes.headers, (patchedData) => {
             responseData = patchedData;
             onDone();
@@ -323,8 +329,9 @@ let connectEngine = (localReq, localSocket, localHead) => {
         localSocket.destroy();
         return;
     }
-    //Even though most user agents will use CONNECT for HTTPS only, it's not a safe assumption, I need to check if the data that is
-    //coming in is actually a TLS handshake
+    //CONNECT is usually used by HTTPS, WebSocket, and WebSocket Secure
+    //In the case of WebSocket, there will be no TLS handshake, I need to check if there is a TLS handshake and connect the socket
+    //to the correct server
     //Since SSLv2 is now prohibited and Chromium is already rejecting SSLv3 connections, in 2017, I can safely assume only TLS is used
     //https://tools.ietf.org/html/rfc6176
 
@@ -335,8 +342,9 @@ let connectEngine = (localReq, localSocket, localHead) => {
  * https://tools.ietf.org/html/rfc5246
  * https://github.com/openssl/openssl/blob/a9c85ceaca37b6b4d7e4c0c13c4b75a95561c2f6/include/openssl/tls1.h#L65
  * The first 2 bytes should be 0x16 0x03, and the 3rd byte should be 0x01, 0x02, 0x03, or 0x04.
- * TODO: Detect if SNI is used, these might be useful:
- *       https://tools.ietf.org/html/rfc6066#section-3 https://tools.ietf.org/html/rfc3546#section-3.1
+ * TODO: Detect if SNI is used, mitmproxy is using Kaitai Struct to parse the handshake. I probably want to try that later, for now, I'll
+ * assume all requests that uses TLS gives SNI.
+ * https://github.com/mitmproxy/mitmproxy/blob/ee6ea31147428729776ea2e8fe24d1fc44c63c9b/mitmproxy/proxy/protocol/tls.py
  */
 connectEngine.onHandshake = (data) => {
     //TODO
@@ -355,32 +363,34 @@ exports.start = (config) => {
     //Load configuration
     const port = config.port || 12345;
     const useTLS = config.useTLS || false;
-    const unsafe = config.unsafe || false;
     let server;
-    //Create server
+    //Check TLS configuration and create the right server
     if (useTLS) {
         console.log("INFO: Loading certificate authority root certificate...");
         tls.init((cert) => {
-            server = https.createServer(cert, requestEngine); //Still handle REQUEST the same way
-            server.on("connect", connectEngine); //Handle CONNECT
-            server.listen(port);
+            server = https.createServer(cert); //Still handle REQUEST the same way
             console.log(`INFO: Violentproxy started on port ${port}, TLS is enabled.`);
         });
-    } else if (unsafe) {
+    } else {
         //Similar to the mode above, except the proxy server itself is started in HTTP mode
         //This is good for localhost, as it would speed up the proxy server
+        console.log("WARNING: The connection between your user agent and Violentproxy is not encrypted.");
         console.log("INFO: Loading certificate authority root certificate...");
         tls.init(() => {
-            server = http.createServer(requestEngine);
-            server.on("connect", connectEngine);
-            server.listen(port);
+            server = http.createServer();
             console.log(`INFO: Violentproxy started on port ${port}, TLS is disabled but HTTPS requests are allowed.`);
         });
-    } else {
-        server = http.createServer(requestEngine); //Only handle REQUEST
-        server.listen(port);
-        console.log(`INFO: Violentproxy started on port ${port}, TLS is disabled and HTTPS requests are disallowed.`);
     }
+    //Listen to REQUEST requests, this is often used for HTTP
+    server.on("request", requestEngine);
+    //Listen to CONNECT requests, this often used for HTTPS and WebSocket
+    server.on("connect", connectEngine);
+    //Ignore bad requests
+    server.on("clientError", (err, socket) => {
+        socket.destroy();
+    });
+    //Listen to the port
+    server.listen(port);
 };
 
 /**
