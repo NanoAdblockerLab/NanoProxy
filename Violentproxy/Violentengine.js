@@ -69,13 +69,8 @@ let requestEngine = (localReq, localRes) => {
     //As I can't easily find out what is my common name, the first request will backloop internally
     //This isn't the most efficient way to handle it, but should be good enough if Userscripts don't spam the API
     if (!localReq.url[0] === "/") {
-        //TODO: Change this to handle Userscripts API
-        localRes.writeHead(500, "Not Implemented", {
-            "Content-Type": "text/plain",
-            "Server": "Violentproxy Proxy Server",
-        });
-        localRes.write("Userscript callback is not implemented.");
-        localRes.end();
+        console.log("TODO: Userscript callback is not implemented.");
+        localRes.destroy();
         return;
     }
     //Patch the request
@@ -205,6 +200,11 @@ requestEngine.finalize = (localRes, remoteRes, referer, url, isText, responseDat
 };
 
 /**
+ * The next usable local port. 12345 used by the proxy itself and 12346 used by dynamic server.
+ * @var {integer}
+ */
+let portCounter = 12347;
+/**
  * Available TLS servers, they are used to proxy encrypted CONNECT requests.
  * A server key must be like "example.com".
  * TODO: Add a timer that removes servers when they are not used for extended amount of time.
@@ -225,10 +225,12 @@ const Server = class {
      * 
      */
     constructor(domain) {
+        //Initialize resource locking mechanism
         this.available = false;
-        this.server = null;
         this.onceAvailableCallback = [];
+        //Initialize server
         tls.sign(domain, (cert) => {
+            //Keyword "this" will be inherited over
             this.server = https.createServer(cert);
         });
     }
@@ -243,6 +245,7 @@ const Server = class {
 };
 /**
  * Dynamic server, this server uses SNI to server all HTTPS request to SNI capable clients.
+ * TODO: Add WebSocket and WebSocket Secure handling.
  * @class
  */
 const DynamicServer = class {
@@ -251,14 +254,30 @@ const DynamicServer = class {
      * @constructor
      */
     constructor() {
-        this.available = false;
+        //Map remote port to local one, I really don't think more than 10 would be open
+        this.portMap = {
+            443: 12346, //Initialize the port that would be the most used
+        };
+        //The host where
+        this.knownHosts = ["localhost"];
+        //Initialize server
         this.server = https.createServer({});
-        this.onceAvailableCallback = [];
+    }
+    /**
+     * Schedule a function to call once the server is available again.
+     * The function will be synchronously called immediately if the server is already ready.
+     * @method
+     * @param {string} host - The host
+     * @param {Function} func - The function to call.
+     */
+    prepare(host, port, callback) {
+
     }
 };
 /**
  * Get a TLS server for the current host name.
  * TODO: Test out if Chrome like our shortcut, we are not checking public suffix.
+ * TODO: This is never used...
  * @param {string} host - The current host name.
  * @param {Function} callback - The function to call when a TLS server is ready.
  ** @param {boolean} success - Whether host name is valid, a server will be supplied if the host name is valid.
@@ -269,8 +288,10 @@ const getServer = (host, callback) => {
     let domain;
     if (parts.length < 2) {
         if (host === "localhost") {
-            //TODO: Userscript callback in TLS mode
-            throw "Not implemented";
+            console.log("TODO: Userscript callback is not implenented");
+            process.nextTick(() => {
+                callback(false);
+            });
         } else {
             //Host name not valid
             process.nextTick(() => {
@@ -300,7 +321,6 @@ const getServer = (host, callback) => {
         });
     }
 };
-
 //Initialize SNI server
 runningServers["dynamic"] = new DynamicServer();
 
@@ -323,23 +343,53 @@ let connectEngine = (localReq, localSocket, localHead) => {
     console.log(`INFO: CONNECT request received: ${localReq.url}`);
     //Parse request
     let [host, port, ...rest] = localReq.url.split(":"); //Expected to be something like example.com:443
-    if (rest.length > 0 || !port || !host || host.includes("*")) {
+    if (rest.length > 0 || !port || !host || host.includes("*") || (!host.includes(".") && host !== "localhost")) {
         console.log(`WARNING: CONNECT request to ${localReq.url} is not valid.`);
         localSocket.destroy();
         return;
     }
     port = parseInt(port);
     if (isNaN(port) || port < 0 || port > 65535) {
-        console.log(`WARNING: CONNECT request to ${localReq.url} is not valid.`);
+        //Defaults to port 443
+        port = 443;
+    }
+    //Handle Userscript callback
+    if (host === "localhost") {
+        console.log("TODO: Userscript callback is not implemented.");
         localSocket.destroy();
-        return;
     }
     //CONNECT is usually used by HTTPS, WebSocket, and WebSocket Secure
     //In the case of WebSocket, there will be no TLS handshake, I need to check if there is a TLS handshake and connect the socket
     //to the correct server
     //Since SSLv2 is now prohibited and Chromium is already rejecting SSLv3 connections, in 2017, I can safely assume only TLS is used
     //https://tools.ietf.org/html/rfc6176
-
+    //Check if we have 3 bytes of data
+    if (localHead && localHead.length >= 3) {
+        connectEngine.onHandshake(localReq, localSocket, localHead, host, port);
+    } else {
+        let data = localHead;
+        const handler = () => {
+            localSoket.once("data", (incomingData) => {
+                data = Buffer.concat([data, incomingData]);
+                if (data.length < 3) {
+                    handler();
+                } else {
+                    connectEngine.onHandshake(localReq, localSocket, data, host, port);
+                }
+            });
+        };
+        handler();
+        //Now I need to tell the user agent to send over the data
+        //Line break is \r\n regardless of platform
+        //https://stackoverflow.com/questions/5757290/http-header-line-break-style
+        //TODO: I don't have the "writeHead" shorcut anymore, need to implement HTTP/2 manually
+        localSocket.write("HTTP/1.1 200 OK\r\n");
+        if (localReq.headers["connection"] === "keep-alive") {
+            localSocket.write("Connection: keep-alive\r\n");
+        }
+        //Write an emply line to signal the user agent that HTTP header has ended
+        localSocket.write("\r\n");
+    }
 };
 /**
  * Detect TLS handshake from incoming data.
@@ -350,9 +400,33 @@ let connectEngine = (localReq, localSocket, localHead) => {
  * TODO: Detect if SNI is used, mitmproxy is using Kaitai Struct to parse the handshake. I probably want to try that later, for now, I'll
  * assume all requests that uses TLS gives SNI.
  * https://github.com/mitmproxy/mitmproxy/blob/ee6ea31147428729776ea2e8fe24d1fc44c63c9b/mitmproxy/proxy/protocol/tls.py
+ * @function
+ * @param {IncomingMessage} localReq - The local request object.
+ * @param {Socket} localSocket - The local socket object.
+ * @param {Buffer} localHead - The begining of message, there must be at least 3 bytes.
+ * @param {string} host - The remote host to connect to.
+ * @param {integer} port - The remote port to connect to.
  */
-connectEngine.onHandshake = (data) => {
-    //TODO
+connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
+    //Tell the user agent to hold on, as I need to prepare the server that will accept the connection
+    localSocket.pause();
+    //Check if the connection is TLS
+    const firstBytes = [localHead.readUInit8(0), localHead.readUInit8(1), localHead.readUInit8(2)];
+    if (firstBytes[0] === 0x16 && firstBytes[1] === 0x03 && firstBytes[2] < 0x06) { //Testing for smaller than 0x05 just in case
+        //Assuming all connection accepts SNI
+        runningServers["dynamic"].prepare(host, port, (localPort) => {
+            const connection = net.connect(localPort, "localhost", () => {
+                //Pipe the connection over to the server
+                localSocket.pipe(connection);
+                connection.pipe(localSocket);
+                //Resume the socket that we paused before
+                localSocket.resume();
+            });
+            connection.on("error", () => {
+                localSocket.destroy();
+            });
+        });
+    }
 };
 
 /**
@@ -366,7 +440,6 @@ connectEngine.onHandshake = (data) => {
 exports.start = (config) => {
     config = config || {};
     //Load configuration
-    const port = config.port || 12345;
     const useTLS = config.useTLS || false;
     let server;
     //Check TLS configuration and create the right server
@@ -395,7 +468,7 @@ exports.start = (config) => {
         socket.destroy();
     });
     //Listen to the port
-    server.listen(port);
+    server.listen(12345);
 };
 
 /**
@@ -473,7 +546,7 @@ exports.onResponse = (source, destination, text, headers, callback) => {
     }
 };
 /**
- * TODO: Userscript callback handler
+ * TODO: Implement Userscript callback handler
  */
 exports.onUserscriptCallback = () => {
 

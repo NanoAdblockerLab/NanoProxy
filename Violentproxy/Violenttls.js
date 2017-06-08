@@ -490,7 +490,9 @@ exports.sign = (domain, callback) => {
     //I need to count how many dots there are, RegExp would not be faster as it will
     //create an array anyway
     let parts = domain.split(".");
-    if (parts.length === 2) {
+    if (parts.length < 2) {
+        throw "Invalid hostname";
+    } else if (parts.length === 2) {
         //Domain is like "example.com", since I can't sign `*.com`, I will sign "example.com"
         //and "*.example.com"
         key = `*.${domain}`;
