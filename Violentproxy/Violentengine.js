@@ -11,6 +11,11 @@ const {https, http, net, url} = global;
  * @const {Module}
  */
 const {agent, zlib, tls} = global;
+/**
+ * The certificate for localhost. Will be initialized by exports.start().
+ * @const {Certificate}
+ */
+let localCert;
 
 /**
  * Get MIME type from header.
@@ -254,23 +259,44 @@ const DynamicServer = class {
      * @constructor
      */
     constructor() {
-        //Map remote port to local one, I really don't think more than 10 would be open
-        this.portMap = {
-            443: 12346, //Initialize the port that would be the most used
-        };
-        //The host where
-        this.knownHosts = ["localhost"];
+        //The port of this server
+        this.port = 12346;
+        //The host where I have certificate for
+        this.knownHosts = ["localhost", "127.0.0.1"];
         //Initialize server
         this.server = https.createServer({});
+        //Set default certificate
+        this.server.addContext("*", localCert);
+        this.server.on("connect", this.onConnect);
+        this.server.listen(12346);
     }
     /**
      * Schedule a function to call once the server is available again.
      * The function will be synchronously called immediately if the server is already ready.
      * @method
-     * @param {string} host - The host
-     * @param {Function} func - The function to call.
+     * @param {string} host - The host to connect to.
+     * @param {string} port - The remote port.
+     * @param {Function} func - The function to call when the server is ready.
+     ** @param {integer} localPort - The local port matching the given remote port.
      */
-    prepare(host, port, callback) {
+    prepare(host, callback) {
+        //Check if I have the certificate for the host
+        if (!this.knownHosts[host]) {
+            tls.sign(host, (cert) => {
+                //As the certificate is passed by reference, this won't fill RAM
+                this.knownHosts.push(host);
+                this.server.addContext(host, cert);
+                //Call callback
+                callback();
+            });
+        } else {
+            process.nextTick(() => {
+                callback();
+            });
+        }
+    }
+
+    onConnect() {
 
     }
 };
@@ -369,7 +395,7 @@ let connectEngine = (localReq, localSocket, localHead) => {
     } else {
         let data = localHead;
         const handler = () => {
-            localSoket.once("data", (incomingData) => {
+            localSocket.once("data", (incomingData) => {
                 data = Buffer.concat([data, incomingData]);
                 if (data.length < 3) {
                     handler();
@@ -411,11 +437,11 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
     //Tell the user agent to hold on, as I need to prepare the server that will accept the connection
     localSocket.pause();
     //Check if the connection is TLS
-    const firstBytes = [localHead.readUInit8(0), localHead.readUInit8(1), localHead.readUInit8(2)];
+    const firstBytes = [localHead.readUInt8(0), localHead.readUInt8(1), localHead.readUInt8(2)];
     if (firstBytes[0] === 0x16 && firstBytes[1] === 0x03 && firstBytes[2] < 0x06) { //Testing for smaller than 0x05 just in case
         //Assuming all connection accepts SNI
-        runningServers["dynamic"].prepare(host, port, (localPort) => {
-            const connection = net.connect(localPort, "localhost", () => {
+        runningServers["dynamic"].prepare(host, (localPort) => {
+            const connection = net.connect(runningServers["dynamic"].port, "localhost", () => {
                 //Pipe the connection over to the server
                 localSocket.pipe(connection);
                 connection.pipe(localSocket);
@@ -442,33 +468,39 @@ exports.start = (config) => {
     //Load configuration
     const useTLS = config.useTLS || false;
     let server;
+    const onDone = () => {
+        //Listen to REQUEST requests, this is often used for HTTP
+        server.on("request", requestEngine);
+        //Listen to CONNECT requests, this often used for HTTPS and WebSocket
+        server.on("connect", connectEngine);
+        //Ignore bad requests
+        server.on("clientError", (err, socket) => {
+            socket.destroy();
+        });
+        //Listen to the port
+        server.listen(12345);
+    };
     //Check TLS configuration and create the right server
     if (useTLS) {
         console.log("INFO: Loading certificate authority root certificate...");
         tls.init((cert) => {
-            server = https.createServer(cert); //Still handle REQUEST the same way
-            console.log(`INFO: Violentproxy started on port ${port}, TLS is enabled.`);
+            localCert = cert;
+            server = https.createServer(localCert); //Still handle REQUEST the same way
+            console.log(`INFO: Violentproxy started on port 12345, TLS is enabled.`);
+            onDone();
         });
     } else {
         //Similar to the mode above, except the proxy server itself is started in HTTP mode
         //This is good for localhost, as it would speed up the proxy server
         console.log("WARNING: The connection between your user agent and Violentproxy is not encrypted.");
         console.log("INFO: Loading certificate authority root certificate...");
-        tls.init(() => {
+        tls.init((cert) => {
+            localCert = cert;
             server = http.createServer();
-            console.log(`INFO: Violentproxy started on port ${port}, TLS is disabled but HTTPS requests are allowed.`);
+            console.log(`INFO: Violentproxy started on port 12345, TLS is disabled but HTTPS requests are allowed.`);
+            onDone();
         });
     }
-    //Listen to REQUEST requests, this is often used for HTTP
-    server.on("request", requestEngine);
-    //Listen to CONNECT requests, this often used for HTTPS and WebSocket
-    server.on("connect", connectEngine);
-    //Ignore bad requests
-    server.on("clientError", (err, socket) => {
-        socket.destroy();
-    });
-    //Listen to the port
-    server.listen(12345);
 };
 
 /**

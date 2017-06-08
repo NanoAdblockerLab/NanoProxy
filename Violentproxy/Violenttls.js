@@ -72,7 +72,10 @@ const Cert = class {
                 this.onReadyCallbacks = [];
             }
         }
-        process.nextTick(call);
+        //Check if I have callbacks waiting
+        if (this.onReadyCallbacks.length) {
+            process.nextTick(call);
+        }
     }
     /**
      * Schedule a function to call once the certificate is ready.
@@ -260,11 +263,9 @@ const getServerExt = (domain) => {
  * Generate a certificate authority root certificates, data will be written to global variables.
  * The new root certificate will also be saved to a file.
  * @function
- * @param {Array.<string>} - The DNS names of the proxy server.
- * @param {Array.<string>} - The IPs of the proxy server.
  * @param {Function} callback - The function to call when the root certificate is ready.
  */
-const genCA = (proxyDNS, proxyIP, callback) => {
+const genCA = (callback) => {
     console.log("INFO: Generating certificate authority root certificate...");
     //6 months should be long enough, and reminding the user that he is using a self-signed certificate might
     //not be a bad thing
@@ -375,7 +376,7 @@ const genCert = (domainKey, callback) => {
         }
         const privateKey = keypair.privateKey;
         const publucKey = keypair.publicKey;
-        let serverCert = forge.pki.rsa.createCertificate();
+        let serverCert = forge.pki.createCertificate();
         serverCert.validity.notBefore = startDate;
         serverCert.validity.notAfter = endDate;
         serverCert.setIssuer(CAcert.issuer.attributes);
@@ -400,9 +401,16 @@ const genCert = (domainKey, callback) => {
                 (++done === 3) && onDone();
             }
         };
-        fs.writeFile(`${path}/Violentcert.crt`, forge.pki.certificateToPem(serverCert), onTick);
-        fs.writeFile(`${path}/Violentcert.public`, forge.pki.publicKeyToPem(publucKey), onTick);
-        fs.writeFile(`${path}/Violentcert.private`, forge.pki.privateKeyToPem(privateKey), onTick);
+        fs.mkdir(path, (err) => {
+            if (err) {
+                console.log(`ERROR: Could not save server certificate for ${domainKey}.`);
+                throw err;
+            } else {
+                fs.writeFile(`${path}/Violentcert.crt`, forge.pki.certificateToPem(serverCert), onTick);
+                fs.writeFile(`${path}/Violentcert.public`, forge.pki.publicKeyToPem(publucKey), onTick);
+                fs.writeFile(`${path}/Violentcert.private`, forge.pki.privateKeyToPem(privateKey), onTick);
+            }
+        });
     });
 };
 /**
@@ -449,8 +457,8 @@ const loadCert = (domainKey, callback) => {
 exports.init = (callback) => {
     const onEnd = () => {
         callback({
-            cert: forge.pki.certificateFromPem(CAcert),
-            key: forge.pki.privateKeyFromPem(CAprivate),
+            cert: forge.pki.certificateToPem(CAcert),
+            key: forge.pki.privateKeyToPem(CAprivate),
         });
     };
     loadCA((result) => {
@@ -465,7 +473,7 @@ exports.init = (callback) => {
                 //Generate new one
                 genCA(onEnd);
             } else {
-                console.log("INFO: Certificate authority loaded.");
+                console.log("INFO: Certificate authority root certificate loaded.");
                 //All good
                 onEnd();
             }
@@ -512,7 +520,7 @@ exports.sign = (domain, callback) => {
                 line.setDate(line.getDate() + 7);
                 if (line > forge.pki.certificateFromPem(certCache[key].value.cert).validity.notAfter) {
                     //Generate a new one
-                    certGen(key, () => {
+                    genCert(key, () => {
                         callback(certCache[key].value);
                     });
                 } else {
@@ -524,11 +532,11 @@ exports.sign = (domain, callback) => {
                 }
             } else {
                 //Generate a new one
-                certGen(key, () => {
+                genCert(key, () => {
                     callback(certCache[key].value);
                 });
             }
-        })
+        });
     } else if (certCache[key].busy) {
         //There is probably a better way, but this is nice and easy, and I won't need an extra dependency
         certCache[key].onceReady(() => {
