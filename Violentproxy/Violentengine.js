@@ -130,13 +130,13 @@ let requestEngine = (localReq, localRes) => {
                 //Check content type, I can only patch text
                 //I'm able to change the header of non-text response though
                 if (isText(getType(remoteRes.headers["content-type"]))) {
-                    //So I don't need to encode it again
-                    remoteRes.headers["content-encoding"] = "identity";
-                    //Decode response
+                    //Check encoding
                     let encoding = remoteRes.headers["content-encoding"];
                     if (encoding) {
                         encoding = encoding.toLowerCase();
                     }
+                    //So I don't need to encode it again
+                    remoteRes.headers["content-encoding"] = "identity";
                     if (encoding === "gzip" || encoding === "deflate") {
                         zlib.unzip(data, (err, result) => {
                             if (err) {
