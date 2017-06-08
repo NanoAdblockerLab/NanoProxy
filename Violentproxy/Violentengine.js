@@ -264,11 +264,9 @@ const DynamicServer = class {
         //The host where I have certificate for
         this.knownHosts = ["localhost", "127.0.0.1"];
         //Initialize server
-        this.server = https.createServer({});
-        //Set default certificate
-        this.server.addContext("*", localCert);
+        this.server = https.createServer(localCert);
         this.server.on("connect", this.onConnect);
-        this.server.listen(12346);
+        this.server.listen(this.port);
     }
     /**
      * Schedule a function to call once the server is available again.
@@ -303,6 +301,7 @@ const DynamicServer = class {
      * @param {Buffer} localHead - The begining of message.
      */
     onConnect(localReq, localSocekt, localHead) {
+        debugger;
         console.log(localReq);
         console.log(locakSocket);
         console.log(localHead);
@@ -448,7 +447,9 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
     if (firstBytes[0] === 0x16 && firstBytes[1] === 0x03 && firstBytes[2] < 0x06) { //Testing for smaller than or equal to 0x05 just in case
         //Assuming all connection accepts SNI
         runningServers["dynamic"].prepare(host, () => {
-            const connection = net.connect(runningServers["dynamic"].port, () => {
+            debugger;
+            const connection = net.connect(runningServers["dynamic"].port, (...args) => {
+                debugger;
                 //Pipe the connection over to the server
                 localSocket.pipe(connection);
                 connection.pipe(localSocket);
