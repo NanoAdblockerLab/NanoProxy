@@ -215,7 +215,7 @@ let portCounter = 12347;
  * TODO: Add a timer that removes servers when they are not used for extended amount of time.
  * @var {Dictionary.<Server>}
  */
-let runningServers = [];
+let runningServers = {};
 /**
  * Server object, this prevents issues that can be caused in race condition.
  * TODO: Add WebSocket and WebSocket Secure handling.
@@ -281,7 +281,11 @@ const DynamicServer = class {
      */
     prepare(host, callback) {
         //Check if I have the certificate for the host
-        if (!this.knownHosts[host]) {
+        if (this.knownHosts.includes(host)) {
+            process.nextTick(() => {
+                callback();
+            });
+        } else {
             tls.sign(host, (cert) => {
                 //As the certificate is passed by reference, this won't fill RAM
                 this.knownHosts.push(host);
@@ -289,15 +293,19 @@ const DynamicServer = class {
                 //Call callback
                 callback();
             });
-        } else {
-            process.nextTick(() => {
-                callback();
-            });
         }
     }
-
-    onConnect() {
-
+    /**
+     * CONNECT request handler.
+     * @function
+     * @param {IncomingMessage} localReq - The local request object.
+     * @param {Socket} localSocket - The local socket.
+     * @param {Buffer} localHead - The begining of message.
+     */
+    onConnect(localReq, localSocekt, localHead) {
+        console.log(localReq);
+        console.log(locakSocket);
+        console.log(localHead);
     }
 };
 /**
@@ -347,8 +355,6 @@ const getServer = (host, callback) => {
         });
     }
 };
-//Initialize SNI server
-runningServers["dynamic"] = new DynamicServer();
 
 /**
  * Proxy engine for CONNECT requests.
@@ -435,16 +441,19 @@ let connectEngine = (localReq, localSocket, localHead) => {
  */
 connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
     //Tell the user agent to hold on, as I need to prepare the server that will accept the connection
+    //If I need to generate a certificate, it can take a while
     localSocket.pause();
     //Check if the connection is TLS
     const firstBytes = [localHead.readUInt8(0), localHead.readUInt8(1), localHead.readUInt8(2)];
-    if (firstBytes[0] === 0x16 && firstBytes[1] === 0x03 && firstBytes[2] < 0x06) { //Testing for smaller than 0x05 just in case
+    if (firstBytes[0] === 0x16 && firstBytes[1] === 0x03 && firstBytes[2] < 0x06) { //Testing for smaller than or equal to 0x05 just in case
         //Assuming all connection accepts SNI
-        runningServers["dynamic"].prepare(host, (localPort) => {
-            const connection = net.connect(runningServers["dynamic"].port, "localhost", () => {
+        runningServers["dynamic"].prepare(host, () => {
+            const connection = net.connect(runningServers["dynamic"].port, () => {
                 //Pipe the connection over to the server
                 localSocket.pipe(connection);
                 connection.pipe(localSocket);
+                //Put the head that we have over
+                connection.write(localHead);
                 //Resume the socket that we paused before
                 localSocket.resume();
             });
@@ -452,6 +461,9 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
                 localSocket.destroy();
             });
         });
+    } else {
+        console.log("TODO: Plain HTTP over CONNECT is not yet implemented.");
+        localSocket.destroy();
     }
 };
 
@@ -469,6 +481,8 @@ exports.start = (config) => {
     const useTLS = config.useTLS || false;
     let server;
     const onDone = () => {
+        //Initialize SNI server
+        runningServers["dynamic"] = new DynamicServer();
         //Listen to REQUEST requests, this is often used for HTTP
         server.on("request", requestEngine);
         //Listen to CONNECT requests, this often used for HTTPS and WebSocket
@@ -486,7 +500,7 @@ exports.start = (config) => {
         tls.init((cert) => {
             localCert = cert;
             server = https.createServer(localCert); //Still handle REQUEST the same way
-            console.log(`INFO: Violentproxy started on port 12345, TLS is enabled.`);
+            console.log(`INFO: Violentproxy started on port 12345, encryption is enabled.`);
             onDone();
         });
     } else {
@@ -497,7 +511,7 @@ exports.start = (config) => {
         tls.init((cert) => {
             localCert = cert;
             server = http.createServer();
-            console.log(`INFO: Violentproxy started on port 12345, TLS is disabled but HTTPS requests are allowed.`);
+            console.log(`INFO: Violentproxy started on port 12345, encryption is disabled but HTTPS requests are allowed.`);
             onDone();
         });
     }

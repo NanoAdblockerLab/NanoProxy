@@ -444,6 +444,8 @@ const loadCert = (domainKey, callback) => {
                 return;
             }
             tempCert.private = data;
+            certCache[domainKey].setVal(tempCert);
+            callback(true);
         });
     });
 };
