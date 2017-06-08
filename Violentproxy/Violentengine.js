@@ -265,7 +265,7 @@ const DynamicServer = class {
         this.knownHosts = ["localhost", "127.0.0.1"];
         //Initialize server
         this.server = https.createServer(localCert);
-        this.server.on("connect", this.onConnect);
+        this.server.on("connection", this.onConnect);
         this.server.listen(this.port);
     }
     /**
@@ -296,15 +296,11 @@ const DynamicServer = class {
     /**
      * CONNECT request handler.
      * @function
-     * @param {IncomingMessage} localReq - The local request object.
      * @param {Socket} localSocket - The local socket.
-     * @param {Buffer} localHead - The begining of message.
      */
-    onConnect(localReq, localSocekt, localHead) {
+    onConnect(localSocket) {
         debugger;
-        console.log(localReq);
-        console.log(locakSocket);
-        console.log(localHead);
+        console.log(localSocket);
     }
 };
 /**
@@ -414,7 +410,8 @@ let connectEngine = (localReq, localSocket, localHead) => {
         //Line break is \r\n regardless of platform
         //https://stackoverflow.com/questions/5757290/http-header-line-break-style
         //TODO: I don't have the "writeHead" shorcut anymore, need to implement HTTP/2 manually
-        localSocket.write("HTTP/1.1 200 OK\r\n");
+        localSocket.write(`HTTP/${localReq.httpVersion} 200 OK\r\n`);
+        debugger;
         if (localReq.headers["connection"] === "keep-alive") {
             localSocket.write("Connection: keep-alive\r\n");
         }
