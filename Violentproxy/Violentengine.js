@@ -44,7 +44,7 @@ const isText = (mimeType) => {
  * Proxy engine for REQUEST request.
  * In this mode, the user agent gives me the full control, so I don't need to create servers on the fly.
  * This is generally used for HTTP requests.
- * TODO: Add WebSocket and WebSocket Secure handling
+ * TODO: Add WebSocket and WebSocket Secure handling.
  * @function
  * @param {IncomingMessage} localReq - The local request object.
  * @param {ServerResponse} localRes - The local response object.
@@ -138,7 +138,6 @@ let requestEngine = (localReq, localRes) => {
                         encoding = encoding.toLowerCase();
                     }
                     if (encoding === "gzip" || encoding === "deflate") {
-                        //TODO: Check type here and decide whether or not I should decompress the data here
                         zlib.unzip(data, (err, result) => {
                             if (err) {
                                 //Could not parse, drop the connection
@@ -214,7 +213,8 @@ requestEngine.finalize = (localRes, remoteRes, referer, url, isText, responseDat
 let runningServers = [];
 /**
  * Server object, this prevents issues that can be caused in race condition.
- * TODO: What about WebSocket?
+ * TODO: Add WebSocket and WebSocket Secure handling.
+ * TODO: Implement this.
  * @class
  */
 const Server = class {
@@ -239,6 +239,21 @@ const Server = class {
      */
     onceAvailable(func) {
 
+    }
+};
+/**
+ * Dynamic server, this server uses SNI to server all HTTPS request to SNI capable clients.
+ * @class
+ */
+const DynamicServer = class {
+    /**
+     * The constructor for SNI server.
+     * @constructor
+     */
+    constructor() {
+        this.available = false;
+        this.server = https.createServer({});
+        this.onceAvailableCallback = [];
     }
 };
 /**
@@ -287,17 +302,7 @@ const getServer = (host, callback) => {
 };
 
 //Initialize SNI server
-runningServers["dynamic"] = new (class {
-    /**
-     * The constructor for SNI server.
-     * @constructor
-     */
-    constructor() {
-        this.available = false;
-        this.server = https.createServer({});
-        this.onceAvailableCallback = [];
-    }
-})();
+runningServers["dynamic"] = new DynamicServer();
 
 /**
  * Proxy engine for CONNECT requests.
