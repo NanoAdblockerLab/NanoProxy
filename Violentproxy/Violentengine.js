@@ -421,7 +421,7 @@ let connectEngine = (localReq, localSocket, localHead) => {
         //Line break is \r\n regardless of platform
         //https://stackoverflow.com/questions/5757290/http-header-line-break-style
         //TODO: I don't have the "writeHead" shorcut anymore, need to implement HTTP/2 manually
-        localSocket.write(`HTTP/${localReq.httpVersion} 200 OK\r\n`);
+        localSocket.write(`HTTP/${localReq.httpVersion} 200 Connection Established\r\n`);
         if (localReq.headers["connection"] === "keep-alive") {
             localSocket.write("Connection: keep-alive\r\n");
         }
