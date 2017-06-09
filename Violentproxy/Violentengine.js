@@ -264,9 +264,9 @@ const DynamicServer = class {
         //The host where I have certificate for
         this.knownHosts = ["localhost", "127.0.0.1"];
         //Initialize server
-        this.server = https.createServer(localCert, () => { console.log("test"); });
-        //this.server.on("connection", this.onConnect);
-        //this.server.on("upgrade", () => { debugger; });
+        this.server = https.createServer(localCert);
+        this.server.on("connection", this.onConnect);
+        this.server.on("request", () => { debugger; });
         this.server.listen(this.port);
     }
     /**
