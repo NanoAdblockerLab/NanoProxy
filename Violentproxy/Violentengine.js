@@ -266,7 +266,6 @@ const DynamicServer = class {
         //Initialize server
         this.server = https.createServer(localCert);
         this.server.on("connection", this.onConnect);
-        this.server.on("request", () => { debugger; });
         this.server.listen(this.port);
     }
     /**
@@ -300,7 +299,6 @@ const DynamicServer = class {
      * @param {Socket} localSocket - The local socket.
      */
     onConnect(localSocket) {
-        debugger;
         let data = new Buffer(0);
         localSocket.on("data", (chunk) => {
             data = Buffer.concat(data, chunk);
@@ -456,7 +454,7 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
         runningServers["dynamic"].prepare(host, () => {
             const connection = net.connect(runningServers["dynamic"].port, (...args) => {
                 //Put the head that we have over
-                connection.write(localHead);
+                connection.emit("data",localHead);
                 //Pipe the connection over to the server
                 localSocket.pipe(connection);
                 connection.pipe(localSocket);
