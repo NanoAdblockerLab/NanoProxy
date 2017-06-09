@@ -5,7 +5,7 @@
  * Load network modules.
  * @const {Module}
  */
-const {https, http, net, url} = global;
+const {https, http, net, url, ws} = global;
 /**
  * Load other modules
  * @const {Module}
@@ -265,7 +265,9 @@ const DynamicServer = class {
         this.knownHosts = ["localhost", "127.0.0.1"];
         //Initialize server
         this.server = https.createServer(localCert);
-        this.server.on("connection", this.onConnect);
+        this.server.on("request", this.onRequest);
+        this.ws = new ws.Server({ server: this.server });
+        this.ws.on("connection", this.onConnect);
         this.server.listen(this.port);
     }
     /**
@@ -299,6 +301,7 @@ const DynamicServer = class {
      * @param {Socket} localSocket - The local socket.
      */
     onConnect(localSocket) {
+        console.log(localSocket);
         let data = new Buffer(0);
         localSocket.on("data", (chunk) => {
             data = Buffer.concat(data, chunk);
@@ -310,6 +313,10 @@ const DynamicServer = class {
             console.log(debugArray);
             console.log(JSON.stringify(debugArray));
         });
+    }
+
+    onRequest(...args) {
+        console.log(...args);
     }
 };
 /**
@@ -455,7 +462,7 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
         runningServers["dynamic"].prepare(host, () => {
             const connection = net.connect(runningServers["dynamic"].port, (...args) => {
                 //Put the head that we have over
-                connection.emit("data",localHead);
+                connection.write(localHead);
                 //Pipe the connection over to the server
                 localSocket.pipe(connection);
                 connection.pipe(localSocket);

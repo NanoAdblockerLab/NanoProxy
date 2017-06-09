@@ -267,17 +267,15 @@ const getServerExt = (domain) => {
  */
 const genCA = (callback) => {
     console.log("INFO: Generating certificate authority root certificate...");
-    //6 months should be long enough, and reminding the user that he is using a self-signed certificate might
-    //not be a bad thing
-    //I might change this to something longer like one year or two if I think everything is stable enough
+    //Chrome will reject certificate that has validity longer than 39 months (3.25 years)
+    //The root certificate will last (only) 3 years because it is also used as the server certificate for Userscript callback
+    //A new one will be generated when the validity is less than 1 year, this is because server certificates are valid for 1 year
+    //and the root certificate must be valid for longer
     let startDate = new Date();
     //V8 will handle switching to last month
     startDate.setDate(startDate.getDate() - 1);
     let endDate = new Date(); //Need to create a new one
-    //V8 will handle switching to next year
-    //The certificate is going to work for 6 months, signed for extra 2 months just in case, when checking
-    //for validity, a new certificate will be generated if there are less than 2 months validity left
-    endDate.setMonth(endDate.getMonth() + 8);
+    endDate.setFullYear(endDate.getFullYear() + 3);
     //Generate key pair
     forge.pki.rsa.generateKeyPair({ bits: 2048 }, (err, keypair) => {
         //Abort on error
@@ -365,10 +363,11 @@ const loadCA = (callback) => {
 const genCert = (domainKey, callback) => {
     const path = `${certFolder}/+${domainKey.substring(1)}`;
     console.log(`INFO: Generating server certificate for ${domainKey}...`);
+    //Server certificate lasts 1 year
     let startDate = new Date();
     startDate.setDate(startDate.getDate() - 1);
     let endDate = new Date();
-    endDate.setDate(endDate.getDate() + 35); //5 weeks
+    endDate.setFullYear(endDate.getFullYear() + 1);
     forge.pki.rsa.generateKeyPair({ bits: 2048 }, (err, keypair) => {
         if (err) {
             console.log(`ERROR: Could not create RSA key pair for server certificate for ${domainKey}.`);
@@ -465,9 +464,10 @@ exports.init = (callback) => {
     };
     loadCA((result) => {
         if (result) {
-            //Found, but I still need to check if it is going to expire, 2 months is going to be a safe value
+            //Found, but I still need to check if it is going to expire, checking for 1 year because server certificates
+            //are valid for 1 year
             let line = new Date();
-            line.setDate(line.getDate() + 14);
+            line.setFullYear(line.getFullYear() + 1);
             if (line > CAcert.validity.notAfter) {
                 console.log("NOTICE: Certificate authority is going to expire soon, generating a new one...");
                 console.log("NOTICE: Don't uninstall the old certificate yet, as some server certificates are signed " +
@@ -517,9 +517,10 @@ exports.sign = (domain, callback) => {
         //Try to load certificates from files
         loadCert(key, (result) => {
             if (result) {
-                //Found, but I still need to check if it is going to expire, 7 days is going to be a safe value
+                //Found, but I still need to check if it is going to expire, 1 month is going to be a safe value
                 let line = new Date();
-                line.setDate(line.getDate() + 7);
+                //V8 will handle switching to next year
+                line.setMonth(line.getMonth() + 1);
                 if (line > forge.pki.certificateFromPem(certCache[key].value.cert).validity.notAfter) {
                     //Generate a new one
                     genCert(key, () => {
