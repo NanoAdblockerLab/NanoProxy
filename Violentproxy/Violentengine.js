@@ -73,7 +73,7 @@ let requestEngine = (localReq, localRes) => {
     //Handle internal request loop
     //As I can't easily find out what is my common name, the first request will backloop internally
     //This isn't the most efficient way to handle it, but should be good enough if Userscripts don't spam the API
-    if (!localReq.url[0] === "/") {
+    if (localReq.url[0] === "/") {
         console.log("TODO: Userscript callback is not implemented.");
         localRes.destroy();
         return;
@@ -264,8 +264,9 @@ const DynamicServer = class {
         //The host where I have certificate for
         this.knownHosts = ["localhost", "127.0.0.1"];
         //Initialize server
-        this.server = https.createServer(localCert);
-        this.server.on("connection", this.onConnect);
+        this.server = https.createServer(localCert, () => { console.log("test"); });
+        //this.server.on("connection", this.onConnect);
+        //this.server.on("upgrade", () => { debugger; });
         this.server.listen(this.port);
     }
     /**
@@ -300,7 +301,17 @@ const DynamicServer = class {
      */
     onConnect(localSocket) {
         debugger;
-        console.log(localSocket);
+        let data = new Buffer(0);
+        localSocket.on("data", (chunk) => {
+            data = Buffer.concat(data, chunk);
+
+            let debugArray = [];
+            for (let i = 0; i < chunk.length; i++) {
+                debugArray.push(chunk.readUInt8(i));
+            }
+            console.log(debugArray);
+            console.log(JSON.stringify(debugArray));
+        });
     }
 };
 /**
@@ -411,7 +422,6 @@ let connectEngine = (localReq, localSocket, localHead) => {
         //https://stackoverflow.com/questions/5757290/http-header-line-break-style
         //TODO: I don't have the "writeHead" shorcut anymore, need to implement HTTP/2 manually
         localSocket.write(`HTTP/${localReq.httpVersion} 200 OK\r\n`);
-        debugger;
         if (localReq.headers["connection"] === "keep-alive") {
             localSocket.write("Connection: keep-alive\r\n");
         }
@@ -444,14 +454,12 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
     if (firstBytes[0] === 0x16 && firstBytes[1] === 0x03 && firstBytes[2] < 0x06) { //Testing for smaller than or equal to 0x05 just in case
         //Assuming all connection accepts SNI
         runningServers["dynamic"].prepare(host, () => {
-            debugger;
             const connection = net.connect(runningServers["dynamic"].port, (...args) => {
-                debugger;
+                //Put the head that we have over
+                connection.write(localHead);
                 //Pipe the connection over to the server
                 localSocket.pipe(connection);
                 connection.pipe(localSocket);
-                //Put the head that we have over
-                connection.write(localHead);
                 //Resume the socket that we paused before
                 localSocket.resume();
             });
@@ -460,7 +468,7 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
             });
         });
     } else {
-        console.log("TODO: Plain HTTP over CONNECT is not yet implemented.");
+        console.log("TODO: Plain HTTP or WebSocket over CONNECT is not yet implemented.");
         localSocket.destroy();
     }
 };
@@ -469,14 +477,9 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
  * Start a proxy server.
  * @function
  * @param {Object} config - The configuration object.
- ** {integer} [config.port=12345] - The port that the proxy server listens.
  ** {boolean} [useTLS=false] - Whether the proxy server should be started in HTTPS mode.
- ** {boolean} [unsafe=false] - Whether HTTPS to HTTP proxy is allowed.
  */
-exports.start = (config) => {
-    config = config || {};
-    //Load configuration
-    const useTLS = config.useTLS || false;
+exports.start = (useTLS = false) => {
     let server;
     const onDone = () => {
         //Initialize SNI server

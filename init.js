@@ -26,4 +26,5 @@ global.engine = require("./Violentproxy/Violentengine");
 
 //Start a simple proxy server
 console.log("INFO: Starting Violentproxy...");
+//global.engine.start(true);
 global.engine.start();
