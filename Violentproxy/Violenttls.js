@@ -1,12 +1,13 @@
 //TLS engine for Violentproxy
 //Note that "SSL" often means "SSL/TLS", OpenSSL fully supports TLS related calculations and functions
-//As of 2017, SSL is no longer used and its support is dropped by modern browsers
+//SSL is no longer used and its support is dropped by modern browsers
 "use strict";
 
 /**
  * Load modules.
  * I will use node-forge because it's a pain to get OpenSSL working on Windows.
- * Certificates lasts a year, things would be quite slow in the beginning, but will get better later.
+ * Certificates lasts 2 years, things would be quite slow in the beginning, but will get better later.
+ * I can't make the certificate last longer because Chromium starts to reject certificates that lasts too long.
  * @const {Module}
  */
 const {forge, fs} = global;
@@ -22,12 +23,13 @@ const certFolder = "./Violentproxy/Violentcert";
  * The certificate authority root certificate and its keys. Will be initialized when init() is called.
  * @const {Certificate}
  */
-global.CA = {};
+const CAcert = {};
 /**
  * The certificate authority root certificate, in the format that https.createServer() expects.
+ * Will be initialized when init() is called.
  * @const {Certificate}
  */
-global.CAcert = {};
+global.localCert = {};
 /**
  * Server certificates cache.
  * Will be a dictionary of domain to certificate. The certificate object can be passed directly to https.createServer().
@@ -257,16 +259,12 @@ const getServerExt = (domain) => {
 const genCA = (callback) => {
     global.log("INFO", "Generating certificate authority root certificate...");
     //Chromium will reject certificate that has validity longer than 39 months (3.25 years)
-    //The root certificate will last (only) 3 years because it is also used as the server certificate for the proxy itself
-    //A new one will be generated when the validity is less than 1 year, this is because server certificates are valid for 1 year
-    //and the root certificate must be valid for longer by the time the server certificate is signed
-    //Server certificates are generated again when their validity is less than 1 month, I don't think anyone will keep the proxy
-    //server running continuously for more than 1 month.
+    //The root certificate will last 20 years, a new one will be generated if there are less than 2 years validity left
     let startDate = new Date();
     //V8 will handle switching to last month
     startDate.setDate(startDate.getDate() - 1);
     let endDate = new Date();
-    endDate.setFullYear(endDate.getFullYear() + 3);
+    endDate.setFullYear(endDate.getFullYear() + 20);
     //Generate RSA key pair
     forge.pki.rsa.generateKeyPair({ bits: 2048 }, (err, keypair) => {
         //Abort on error

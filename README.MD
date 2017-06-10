@@ -20,5 +20,5 @@ Please open an issue if there is something you want me to know.
 ## TODO: 
 
 1. Check if Chromium likes my shortcut in Violentssl, I am not checking public suffix. 
-2. Test out how WebRTC works with my proxy. (Connecting to STUN and TURN servers, as well as direct P2P) 
-3. Implement WebSocket proxy. 
+2. Implement WebSocket proxy. 
+3. Test out how WebRTC works with my proxy (Connecting to STUN and TURN servers, as well as direct P2P). 

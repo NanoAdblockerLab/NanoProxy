@@ -12,6 +12,11 @@
  */
 const logLevel = 4;
 /**
+ * Whether or not the proxy server itself should be started with encryption.
+ * @const {boolean}
+ */
+const useTLS = false;
+/**
  * Subject alternative names for the certificate authority, must be set before the first run.
  * More information:
  * https://github.com/digitalbazaar/forge/blob/80c7fd4e21ae83fa236ebb6a2f4748d54aa0dec0/lib/x509.js#L1594
@@ -27,28 +32,36 @@ global.CAaltNames = [
     },
 ];
 //Other global variables:
-//global.CA: The certificate authority root certificate
-//global.CAcert: The certificate authority root certificate in a format that https.createServer() expects
+//global.localCert: The certificate for the proxy server itself
 //global.RequestDecision: The available decisions for the request patcher, more information can be found
-//in ./Violentproxy/Violentengine.js
+//                        in ./Violentproxy/Violentengine.js
 
 /**
- * Log controller, always use this function and not console.log().
+ * Log controller, always use this function instead of console.log().
  * @function
  * @param {integer} level - The level of the log, 1 for error, 2 for warning, 3 for notice, and 4 for info.
  * @param {Any} ...data - The data to log. Append as many arguments as you need.
  */
 global.log = (type, ...data) => {
+    //Skip the calculation if in silent mode
+    if (logLevel === 0) {
+        return;
+    }
+    //Process the log and print to screen
     let level;
     switch (type) {
         case "ERROR": level = 1; break;
         case "WARNING": level = 2; break;
         case "NOTICE": level = 3; break;
         case "INFO": level = 4; break;
-        default: throw new TypeError(`"${type}" is not a valid type.`);
+        default: throw new Error(`global.log() does not accept "${type}" as a valid type.`);
+    }
+    if (!data.length) {
+        throw new Error(`global.log() requires at least two arguments.`);
     }
     if (level <= logLevel) {
-        console.log(type + data.shift(), ...data);
+        data[0] = type + data[0];
+        console.log(...data);
     }
 };
 
@@ -75,6 +88,5 @@ global.tls = require("./Violentproxy/Violenttls");
 global.engine = require("./Violentproxy/Violentengine");
 
 //Start a simple proxy server
-console.log("INFO: Starting Violentproxy...");
-//global.engine.start(true);
-global.engine.start();
+global.log("INFO", "Starting Violentproxy...");
+global.engine.start(useTLS);
