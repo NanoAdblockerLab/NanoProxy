@@ -9,7 +9,7 @@
   },
   "description": "A free and open source implementation of an explicit proxy for content tampering.",
   "engines": {
-    "node": ">=8.0.0"
+    "node": ">=8.1.0"
   },
   "homepage": "https://github.com/Violentproxy/Violentproxy",
   "license": "GNU GPL v3",

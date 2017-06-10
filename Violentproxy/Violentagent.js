@@ -2,7 +2,7 @@
 "use strict";
 
 /**
- * Modules, will be passed over from the core engine when exports.init() is called.
+ * Load modules.
  * @const {Module}
  */
 const {https, http} = global;
@@ -10,14 +10,14 @@ const {https, http} = global;
 /**
  * The cache of available HTTP agents.
  * An agent key must be like "timeout,maxConnection".
- * It can be "5000," (default max connection of Node.js is used).
+ * It can be "5000," (default maximum connection of Node.js is used in this case).
  * Two special cases are "close" (don't keep alive) and "default" (keep alive with all default settings).
  * @var {Dictionary.<Agent>}
  */
 let agentCache = [];
 /**
  * The cache of available HTTPS agents. Refer to agentCache for more information.
- * @var {Dictionary.<Agent>}
+ * @var {Dictionary.<TLSAgent>}
  */
 let tlsAgentCache = [];
 //Initialize common agents
@@ -31,9 +31,9 @@ tlsAgentCache["default"] = new https.Agent({ keepAlive: true });
  * @function
  * @param {string} httpVer - The version of HTTP.
  * @param {Header} headers - The header object.
- * @param {boolean} useTLS - Whether TLS must be used. Keep in mind that this is only for the connection between the
+ * @param {boolean} useTLS - Whether TLS must be used. Note that this is only for the connection between the
  ** proxy and the remote server, it can be different than the connection between the proxy and the user agent.
- * @return {Agent} An agent.
+ * @return {Agent} An agent that matches the requirements.
  */
 exports.getAgent = (httpVer, headers, useTLS) => {
     if ((httpVer === "1.0" && headers["connection"] !== "keep-alive") ||
@@ -49,10 +49,11 @@ exports.getAgent = (httpVer, headers, useTLS) => {
             let options = {
                 keepAlive: true,
             };
-            //The key is "timeout,max"
             let key = ",";
+            //The header is expected to be something like "timeout=5, max=1000"
             const arr = headers["keep-alive"].split(/=|,/);
             for (let i = 0; i < arr.length; i++) {
+                //There can be spaces
                 const entry = arr[i].trim();
                 switch (entry) {
                     case "timeout":

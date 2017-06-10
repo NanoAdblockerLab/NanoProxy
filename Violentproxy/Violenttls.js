@@ -6,27 +6,26 @@
 /**
  * Load modules.
  * I will use node-forge because it's a pain to get OpenSSL working on Windows.
- * Certificates lasts 2 years, things would be quite slow in the beginning, but will get better later.
- * I can't make the certificate last longer because Chromium starts to reject certificates that lasts too long.
  * @const {Module}
  */
 const {forge, fs} = global;
 
 /**
  * The place where all certificates will be saved.
- * The root certificate will be directly placed under this directory, other certificates will have their own folder.
+ * The root certificate will be directly placed under this directory, other certificates will have their own folder,
+ * which will be like "+.example.com".
  * @const {String}
  */
 const certFolder = "./Violentproxy/Violentcert";
 
 /**
- * The certificate authority root certificate and its keys. Will be initialized when init() is called.
+ * The certificate authority root certificate. Will be initialized when exports.init() is called.
  * @const {Certificate}
  */
 const CAcert = {};
 /**
- * The certificate authority root certificate, in the format that https.createServer() expects.
- * Will be initialized when init() is called.
+ * The certificate for the proxy server, in the format that https.createServer() expects.
+ * Will be initialized when exports.init() is called.
  * @const {Certificate}
  */
 global.localCert = {};
@@ -218,7 +217,7 @@ const serverSbj = [
  * Get server extension. This cannot be a single global variable as I might be generating two certificates at the
  * same time and the extension is slightly different for each server. Refer to CAext for more information.
  * IP signing may not work properly:
- * https://ca.godaddy.com/help/can-i-request-a-certificate-for-an-intranet-name-or-ip-address-6935
+ * 
  * @function
  * @param {Array.<stirng>} domain - The domains to sign.
  * @param {Array.<string>} ips - The IPs to sign.

@@ -457,37 +457,6 @@ exports.start = (useTLS = false) => {
 };
 
 /**
- * Request decisions for request patcher.
- * @const {Enumeration}
- */
-global.RequestDecision = {
-    /**
-     * Process the request normally. The response will be processed by response patcher later.
-     */
-    Allow: 0,
-    /**
-     * Return a HTTP 200 response with an empty body.
-     * Pass in these extra fields when needed:
-     * @const {string} type - The content type, defaults to one of the requested one.
-     * @const {stirng} server - The server name, defaults to "Apache/2.4.7 (Ubuntu)".
-     */
-    Empty: 1,
-    /**
-     * Immediately close the connection.
-     */
-    Deny: 2,
-    /**
-     * Redirect the request to another address or to a local resource, the user agent will not be able to know
-     * the resource is redirected, a certificate for the originally requested host will be signed and used.
-     * The following extra fields must be passed:
-     * @const {string} redirectLocation - The location to redirect, pass null for redirecting to a local resource.
-     * @const {string|Buffer} redirectText - The text to redirect to, this is only required if redirectLocation is null.
-     * @const {Header} headers - The headers, omit to use the default one.
-     */
-    Redirect: 3,
-};
-
-/**
  * Request patcher.
  * @var {Function}
  * @param {URL} source - The referrer URL, if exist. Undefined will be passed if it doesn't exist.
@@ -533,9 +502,9 @@ exports.onResponse = (source, destination, text, headers, callback) => {
 
 //Handle server crash
 process.on("uncaughtException", (err) => {
-    console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    console.log("!!!!! Violentproxy encountered a fatal error and is about to crash !!!!!");
-    console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    console.log("If you believe this is caused by a bug, please inform us at https://github.com/Violentproxy/Violentproxy/issues");
+    global.log("ERROR", "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    global.log("ERROR", "!!!!! Violentproxy encountered a fatal error and is about to crash !!!!!");
+    global.log("ERROR", "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    global.log("ERROR", "If you believe this is caused by a bug, please inform us at https://github.com/Violentproxy/Violentproxy/issues");
     throw err;
 });
