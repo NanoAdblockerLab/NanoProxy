@@ -37,22 +37,27 @@ global.localCert = null;
 Content-Type: text/html
 Server: Apache/2.4.7 (Ubuntu)
  * I will try to detect what Content-Type should be, I'll default to "text/html" if I can't figure it out.
+ * REQUEST requests patcher will be triggered after CONNECT requests patcher, there isn't much you can do
+ * in CONNECT requests patcher because I don't have much information at that time.
  * @const {Enumeration}
  */
 global.RequestDecision = {
     /**
      * Process the request normally. The response will be processed by response patcher later.
+     * This is allowed in REQUEST and CONNECT requests patcher.
      * No extra fields required.
      */
     Allow: 1,
     /**
      * Return a HTTP 200 response with an empty body.
+     * This is only allowed in REQUEST requests patcher.
      * Pass in these extra fields when needed:
      * @param {Header} headers - The headers of the response, omit to use the default one.
      */
     Empty: 2,
     /**
      * Immediately close the connection.
+     * This is only allowed in REQUEST requests patcher.
      * No extra fields required.
      */
     Deny: 3,
@@ -61,6 +66,7 @@ global.RequestDecision = {
      * the resource is redirected easily, a certificate for the originally requested host will be signed and used.
      * Note that the user agent can still figure it out from unexpected headers, use response patcher to fix the
      * headers if needed.
+     * This is only allowed in REQUEST requests patcher.
      * Pass in these extra fields when needed:
      * @param {string} redirectLocation - The location to redirect, pass null for redirecting to a local resource, this
      ** field is required.
@@ -69,6 +75,12 @@ global.RequestDecision = {
      ** Omit to use the default one.
      */
     Redirect: 4,
+    /**
+     * Directly connect the user to the remote server.
+     * This is only allowed in CONNECT requests patcher.
+     * No extra fields required.
+     */
+    Pipe: 5,
 };
 
 /**
