@@ -5,12 +5,12 @@
  * Load network modules.
  * @const {Module}
  */
-const {https, http, net, url, ws} = global;
+const { https, http, net, url, ws } = global;
 /**
  * Load other modules
  * @const {Module}
  */
-const {agent, zlib, tls} = global;
+const { agent, zlib, tls } = global;
 
 /**
  * Get MIME type from header.
@@ -42,20 +42,19 @@ const isText = (mimeType) => {
 
 /**
  * Proxy engine for REQUEST request.
- * In this mode, the user agent gives me the full control, so I don't need to create servers on the fly.
- * This is generally used for HTTP requests.
  * @function
  * @param {IncomingMessage} localReq - The local request object.
  * @param {ServerResponse} localRes - The local response object.
  */
 let requestEngine = (localReq, localRes) => {
-    global.log("INFO", `REQUEST request received: ${localReq.url}`);
+    global.log("INFO", `Received a REQUEST request: ${localReq.url}`);
     //Prepare request
     let options
     try {
         options = url.parse(localReq.url);
     } catch (err) {
-        //This is a bad request, but to prevent proxy detection, I'll just drop the connection
+        //Bad request
+        global.log("WARNING", `Received an invalid REQUEST request:\n${err.message}`);
         localRes.destroy();
         return;
     }
@@ -63,9 +62,9 @@ let requestEngine = (localReq, localRes) => {
     options.headers = localReq.headers;
     options.agent = agent.getAgent(localReq.httpVersion, localReq.headers, options.protocol === "https:");
     options.auth = localReq.auth;
-    //Verify URL
+    //Check for host
     if (localReq.url[0] === "/") {
-        global.log("WARNING", "Directly requesting localhost is not allowed.");
+        global.log("WARNING", "Received an invalid REQUEST request:\nNo host give.");
         localRes.destroy();
         return;
     }
@@ -75,12 +74,12 @@ let requestEngine = (localReq, localRes) => {
         localReq.headers["accept-encoding"] = "gzip, deflate";
         switch (requestResult.result) {
             case global.RequestDecision.Allow:
-                //Do nothing, let the request pass
+                //Do nothing, process it normally
                 break;
             case global.RequestDecision.Empty:
-                localRes.writeHead(200, "OK", {
-                    "Content-Type": requestResult.type || getType(localReq.headers["accept"]),
-                    "Server": requestResult.server || "Apache/2.4.7 (Ubuntu)",
+                localRes.writeHead(200, "OK", requestResult.headers || {
+                    "Content-Type": getType(localReq.headers["accept"]),
+                    "Server": "Apache/2.4.7 (Ubuntu)",
                 });
                 localRes.end();
                 return; //Stop here
@@ -91,7 +90,7 @@ let requestEngine = (localReq, localRes) => {
                 if (requestResult.redirectLocation === null) {
                     //Just write back the redirected text
                     localRes.writeHead(200, "OK", requestResult.headers || {
-                        "Content-Type": "text/plain",
+                        "Content-Type": getType(localReq.headers["accept"]),
                         "Server": "Apache/2.4.7 (Ubuntu)",
                     });
                     localRes.write(requestResult.redirectText);
@@ -107,7 +106,7 @@ let requestEngine = (localReq, localRes) => {
                     break;
                 }
             default:
-                throw "Unexpected request result";
+                throw new Error(`requestEngine() does not accept ${requestResult} as a request decision.`);
         }
         //Proxy request
         let request = (options.protocol === "https:" ? https : http).request(options, (remoteRes) => {
@@ -119,7 +118,7 @@ let requestEngine = (localReq, localRes) => {
             remoteRes.on("end", () => {
                 data = Buffer.concat(data);
                 //Check content type, I can only patch text
-                //I'm able to change the header of non-text response though
+                //I'm still able to change the header of non-text response though
                 if (isText(getType(remoteRes.headers["content-type"]))) {
                     //Check encoding
                     let encoding = remoteRes.headers["content-encoding"];
@@ -131,7 +130,8 @@ let requestEngine = (localReq, localRes) => {
                     if (encoding === "gzip" || encoding === "deflate") {
                         zlib.unzip(data, (err, result) => {
                             if (err) {
-                                //Could not parse, drop the connection
+                                //Could not parse
+                                global.log("WARNING", `Could not parse server response:\n${err.message}`);
                                 localRes.destroy();
                             } else {
                                 requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, result);
@@ -147,8 +147,8 @@ let requestEngine = (localReq, localRes) => {
                 }
             });
             remoteRes.on("error", (err) => {
-                global.log("WARNING", `An error occured when retrieving data from remote server.\n${err.message}`);
-                //Something went wrong, drop the local connection
+                //Something went wrong
+                global.log("WARNING", `Could not connect to remote server:\n${err.message}`);
                 localRes.destroy();
             });
             remoteRes.on("aborted", () => {
@@ -157,8 +157,7 @@ let requestEngine = (localReq, localRes) => {
             });
         });
         request.on("error", (err) => {
-            global.log("WARNING", `An error occurred when handling REQUEST request to ${localReq.url}, this usually means ` +
-                `the client sent an invalid request or you are not connected to the Internet.${err.message}`);
+            global.log("WARNING", `Could not connect to remote server:\n${err.message}`);
             localRes.destroy();
         });
         request.end();
@@ -178,70 +177,35 @@ let requestEngine = (localReq, localRes) => {
  */
 requestEngine.finalize = (localRes, remoteRes, referer, url, isText, responseData) => {
     const onDone = () => {
+        //Update content length
         remoteRes.headers["content-length"] = responseData.length;
+        //Prevent public key pinning
+        delete remoteRes.headers["Public-Key-Pins"];
         localRes.writeHead(remoteRes.statusCode, remoteRes.statusMessage, remoteRes.headers);
         localRes.write(responseData);
         localRes.end();
     };
     if (isText) {
-        exports.onResponse(referer, url, responseData.toString(), remoteRes.headers, (patchedData) => {
+        exports.onTextResponse(referer, url, responseData.toString(), remoteRes.headers, (patchedData) => {
             responseData = patchedData;
             onDone();
         });
     } else {
-        exports.onResponse(referer, url, null, remoteRes.headers, () => {
+        exports.onOtherResponse(referer, url, responseData, remoteRes.headers, (patchedData) => {
+            responseData = patchedData;
             onDone();
         });
     }
 };
 
 /**
- * The next usable local port. 12345 used by the proxy itself and 12346 used by dynamic server.
- * @var {integer}
+ * The dynamic server, clients that support Sever Name Indication will be routed to this server.
+ * This server will be initialized when exports.start() is called.
+ * @const {DynamicServer}
  */
-let portCounter = 12347;
+let dynamicServer;
 /**
- * Available TLS servers, they are used to proxy encrypted CONNECT requests.
- * A server key must be like "example.com".
- * TODO: Add a timer that removes servers when they are not used for extended amount of time.
- * @var {Dictionary.<Server>}
- */
-let runningServers = {};
-/**
- * Server object, this prevents issues that can be caused in race condition.
- * TODO: Add WebSocket and WebSocket Secure handling.
- * TODO: Implement this.
- * @class
- */
-const Server = class {
-    /**
-     * Construct the object and initialize the server.
-     * @constructor
-     * @param {string} domain - The domain, must be something like "example.com".
-     * 
-     */
-    constructor(domain) {
-        //Initialize resource locking mechanism
-        this.available = false;
-        this.onceAvailableCallback = [];
-        //Initialize server
-        tls.sign(domain, (cert) => {
-            //Keyword "this" will be inherited over
-            this.server = https.createServer(cert);
-        });
-    }
-    /**
-     * Schedule a function to call once the server is available again.
-     * @method
-     * @param {Function} func - The function to call.
-     */
-    onceAvailable(func) {
-
-    }
-};
-/**
- * Dynamic server, this server uses SNI to server all HTTPS request to SNI capable clients.
- * TODO: Add WebSocket and WebSocket Secure handling.
+ * Dynamic server class.
  * @class
  */
 const DynamicServer = class {
@@ -253,24 +217,25 @@ const DynamicServer = class {
         //The port of this server
         this.port = 12346;
         //The host where I have certificate for
-        this.knownHosts = ["localhost", "127.0.0.1"];
+        this.knownHosts = [];
         //Initialize server
         this.server = https.createServer({});
+        //Handle error
         this.server.on("error", (err) => {
-            global.log("WARNING", "")
+            global.log("WARNING", `An error occured on the dynamic server:\n${err.message}`);
         });
-        this.server.on("clientError", (err) => {
-            global.log("WARNING", "")
+        this.server.on("clientError", (err, localSocket) => {
+            global.log("WARNING", `A client error occured on the dynamic server:\n${err.message}`)
+            localSocket.destroy();
         });
+        //Bind event handler
         this.server.on("request", this.onRequest);
         this.server.listen(this.port);
     }
     /**
-     * Schedule a function to call once the server is available again.
-     * The function will be synchronously called immediately if the server is already ready.
+     * Schedule a function to call once the server is ready to handle the request.
      * @method
      * @param {string} host - The host to connect to.
-     * @param {string} port - The remote port.
      * @param {Function} func - The function to call when the server is ready.
      ** @param {integer} localPort - The local port matching the given remote port.
      */
@@ -289,39 +254,34 @@ const DynamicServer = class {
         }
     }
     /**
-     * REQUEST request handler.
+     * Dynamic server REQUEST request handler, slightly modify the URL and send it off to the main REQUEST request handler.
      * @method
      * @param {IncomingMessage} localReq - The local request object.
      * @param {ServerResponse} localRes - The local response object.
      */
     onRequest(localReq, localRes) {
         //Fill in the full URL and send off to request engine.
-        localReq.url = "https://" + localReq.headers.host + localReq.url;
+        localReq.url = "https://" + localReq.headers["host"] + localReq.url;
         requestEngine(localReq, localRes);
     }
 };
 
 /**
  * Proxy engine for CONNECT requests.
- * In this mode, the user agent will ask me to establish a tunnel to the target host. As I can't decrypt the data that is going over,
- * I have to create a local server to make the user agent to believe it is speaking to a real server.
- * I need to create a server for each domain, the server for "example.com" can serve requests to "example.com" and "*.example.com",
- * but not "*.www.example.com".
- * This is generally used for HTTPS.
  * @function
  * @param {IncomingMessage} localReq - The local request object.
  * @param {Socket} localSocket - The local socket, the user agent will ask me to connect this to a socket of the remote server,
- ** but obviously I will connect it to a local server instead.
+ ** but I will connect it to a local server instead.
  * @param {Buffer} localHead - The begining of message, this may or may not be present.
  */
 let connectEngine = (localReq, localSocket, localHead) => {
     //If I think it's OK to give up control over the communication, I can pipe the request over like the example here:
     //https://newspaint.wordpress.com/2012/11/05/node-js-http-and-https-proxy/
-    global.log("INFO", `CONNECT request received: ${localReq.url}`);
+    global.log("INFO", `Received a CONNECT request: ${localReq.url}`);
     //Parse request
     let [host, port, ...rest] = localReq.url.split(":"); //Expected to be something like example.com:443
-    if (rest.length > 0 || !port || !host || host.includes("*") || !host.includes(".")) {
-        global.log("WARNING", `CONNECT request to ${localReq.url} is not valid.`);
+    if (rest.length > 0 || !host || host.includes("*") || !host.includes(".")) {
+        global.log("WARNING", `Received an invalid CONNECT request:\nRequest URL is malformed.`);
         localSocket.destroy();
         return;
     }
@@ -335,7 +295,7 @@ let connectEngine = (localReq, localSocket, localHead) => {
     //to the correct server
     //Since SSLv2 is now prohibited and Chromium is already rejecting SSLv3 connections, in 2017, I can safely assume only TLS is used
     //https://tools.ietf.org/html/rfc6176
-    //Check if we have 3 bytes of data
+    //I need 3 bytes of data to distinguish a TLS handshake from plain text
     if (localHead && localHead.length >= 3) {
         connectEngine.onHandshake(localReq, localSocket, localHead, host, port);
     } else {
@@ -354,11 +314,12 @@ let connectEngine = (localReq, localSocket, localHead) => {
         //Now I need to tell the user agent to send over the data
         //Line break is \r\n regardless of platform
         //https://stackoverflow.com/questions/5757290/http-header-line-break-style
-        //TODO: I don't have the "writeHead" shorcut anymore, need to implement HTTP/2 manually
-        localSocket.write(`HTTP/${localReq.httpVersion} 200 Connection Established\r\n`);
-        if (localReq.headers["connection"] === "keep-alive" || localReq.headers["proxy-connection"] === "keep-alive") {
+        localSocket.write(`HTTP/${localReq.httpVersion} 200 Connection Established\r\n`); //Maybe I should hard code this as HTTP/1.1
+        if (localReq.headers["connection"] === "keep-alive") {
             localSocket.write("Connection: keep-alive\r\n");
-            //localSocket.write("Proxy-Connection: keep-alive\r\n");
+        }
+        if (localReq.headers["proxy-connection"] === "keep-alive") {
+            localSocket.write("Proxy-Connection: keep-alive\r\n");
         }
         //Write an emply line to signal the user agent that HTTP header has ended
         localSocket.write("\r\n");
@@ -370,8 +331,6 @@ let connectEngine = (localReq, localSocket, localHead) => {
  * https://tools.ietf.org/html/rfc5246
  * https://github.com/openssl/openssl/blob/a9c85ceaca37b6b4d7e4c0c13c4b75a95561c2f6/include/openssl/tls1.h#L65
  * The first 2 bytes should be 0x16 0x03, and the 3rd byte should be 0x01, 0x02, 0x03, or 0x04.
- * TODO: Detect if SNI is used, mitmproxy is using Kaitai Struct to parse the handshake. I probably want to try that later, for now, I'll
- * assume all requests that uses TLS gives SNI.
  * https://github.com/mitmproxy/mitmproxy/blob/ee6ea31147428729776ea2e8fe24d1fc44c63c9b/mitmproxy/proxy/protocol/tls.py
  * @function
  * @param {IncomingMessage} localReq - The local request object.
@@ -388,8 +347,8 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
     const firstBytes = [localHead.readUInt8(0), localHead.readUInt8(1), localHead.readUInt8(2)];
     if (firstBytes[0] === 0x16 && firstBytes[1] === 0x03 && firstBytes[2] < 0x06) { //Testing for smaller than or equal to 0x05 just in case
         //Assuming all connection accepts SNI
-        runningServers["dynamic"].prepare(host, () => {
-            const connection = net.connect(runningServers["dynamic"].port, () => {
+        dynamicServer.prepare(host, () => {
+            const connection = net.connect(dynamicServer.port, () => {
                 //Pipe the connection over to the server
                 localSocket.pipe(connection);
                 connection.pipe(localSocket);
@@ -399,12 +358,12 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
                 localSocket.resume();
             });
             connection.on("error", (err) => {
-                global.log("WARNING", `An error occured when connecting to local HTTPS server:\n${err.message}`);
+                global.log("WARNING", `An error occured when connecting to dynamic server:\n${err.message}`);
                 localSocket.destroy();
             });
         });
     } else {
-        global.log("ERROR", "Plain HTTP or WebSocket over CONNECT is not yet implemented.");
+        global.log("WARNING", "Received an invalid CONNECT request:\nData sent by user agent is not a TLS handshake.");
         localSocket.destroy();
     }
 };
@@ -419,10 +378,10 @@ exports.start = (useTLS = false) => {
     let server;
     const onDone = () => {
         //Initialize SNI server
-        runningServers["dynamic"] = new DynamicServer();
-        //Listen to REQUEST requests, this is often used for HTTP
+        dynamicServer = new DynamicServer();
+        //Listen to REQUEST requests
         server.on("request", requestEngine);
-        //Listen to CONNECT requests, this often used for HTTPS and WebSocket
+        //Listen to CONNECT requests
         server.on("connect", connectEngine);
         //Handle errors
         server.on("error", (err) => {
@@ -439,7 +398,7 @@ exports.start = (useTLS = false) => {
     if (useTLS) {
         global.log("INFO", "Loading certificate authority root certificate...");
         tls.init(() => {
-            server = https.createServer(CAcert); //Still handle REQUEST the same way
+            server = https.createServer(global.localCert); //Still handle REQUEST the same way
             global.log("INFO", `Violentproxy started on port 12345, encryption is enabled.`);
             onDone();
         });
@@ -459,22 +418,28 @@ exports.start = (useTLS = false) => {
 /**
  * Request patcher.
  * @var {Function}
- * @param {URL} source - The referrer URL, if exist. Undefined will be passed if it doesn't exist.
- * @param {URL} destination - The requested URL.
- * @param {Header} headers - The headers object as reference, changes to it will be reflected. Be aware that some fields
- ** can't be changed, and some fields will cause problems if changed.
+ * @param {string} source - The referer URL, if exist. Undefined will be passed if it doesn't exist.
+ * @param {string} destination - The requested URL.
+ * @param {Header} headers - The headers object as reference, changes to it will be reflected.
  * @param {Function} callback - The function to call when a decision is made, the patcher can be either synchronous or asynchronous.
  ** @param {RequestDecision} result - The decision.
- * An URL object contains:
- ** @const {string} domain - The domain of the URL, this is provided for convenience and performance.
- ** @const {string} path - The path of the URL, this is provided for convenience and performance.
- ** @const {string} fullURL - The full URL.
  */
 exports.onRequest = (source, destination, headers, callback) => {
     //These parameters are not used
     void source;
     void destination;
     void headers;
+    //This is just an example
+    callback({
+        result: global.RequestDecision.Allow,
+    });
+};
+/**
+ *
+ */
+exports.onConnect = (destination, callback) => {
+    //These parameters are not used
+    void destination;
     //This is just an example
     callback({
         result: global.RequestDecision.Allow,

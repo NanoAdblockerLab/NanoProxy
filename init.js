@@ -33,6 +33,10 @@ global.proxyIPs = ["127.0.0.1"];
 global.localCert = null;
 /**
  * Possible request decisions from request patcher.
+ * The default headers look like this:
+Content-Type: text/html
+Server: Apache/2.4.7 (Ubuntu)
+ * I will try to detect what Content-Type should be, I'll default to "text/html" if I can't figure it out.
  * @const {Enumeration}
  */
 global.RequestDecision = {
@@ -44,8 +48,7 @@ global.RequestDecision = {
     /**
      * Return a HTTP 200 response with an empty body.
      * Pass in these extra fields when needed:
-     * @param {string} type - The content type, defaults to one of the requested one.
-     * @param {stirng} server - The server name, defaults to "Apache/2.4.7 (Ubuntu)".
+     * @param {Header} headers - The headers of the response, omit to use the default one.
      */
     Empty: 2,
     /**
@@ -58,11 +61,12 @@ global.RequestDecision = {
      * the resource is redirected easily, a certificate for the originally requested host will be signed and used.
      * Note that the user agent can still figure it out from unexpected headers, use response patcher to fix the
      * headers if needed.
-     * The following extra fields must be passed:
-     * @param {string} redirectLocation - The location to redirect, pass null for redirecting to a local resource.
+     * Pass in these extra fields when needed:
+     * @param {string} redirectLocation - The location to redirect, pass null for redirecting to a local resource, this
+     ** field is required.
      * @param {string|Buffer} redirectText - The text to redirect to, this is only required if redirectLocation is null.
-     * @param {Header} headers - The header of the response, this is only used if redirectLocation is null. If this is not
-     ** supplied, default headers will be used, they will be similar to the default headers of global.RequestDecision.Empty.
+     * @param {Header} headers - The header of the response, this is only used if redirectLocation is null.
+     ** Omit to use the default one.
      */
     Redirect: 4,
 };
@@ -85,7 +89,7 @@ global.log = (type, ...data) => {
         case "WARNING": level = 2; break;
         case "NOTICE": level = 3; break;
         case "INFO": level = 4; break;
-        default: throw new Error(`global.log() does not accept "${type}" as type.`);
+        default: throw new Error(`global.log() does not accept ${type} as type.`);
     }
     if (!data.length) {
         throw new Error(`global.log() requires at least two arguments.`);
