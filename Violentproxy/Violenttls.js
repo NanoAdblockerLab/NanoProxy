@@ -31,22 +31,19 @@ const CAcert = {};
 global.localCert = {};
 /**
  * Server certificates cache.
- * Will be a dictionary of domain to certificate. The certificate object can be passed directly to https.createServer().
- * A domain key must be like "*.example.com", the wildcard is required.
+ * Will be a dictionary of cache key to certificate. The certificate object can be passed directly to https.createServer().
+ * A cache key must be like "*.example.com", the wildcard is required.
  * @var {Dictionary.<Cert>}
  */
 let certCache = {};
 /**
- * Certificate object, this prevents issues that can be caused in race condition.
- * The reference to the certificate will always be kept when addContext() is called, so I can't unload certificate to
- * release memory. I don't think there is a way to remove the context, it would be an expensive process to keep track
- * of the activity of each context anyway, certificates are pretty small, it should be fine.
+ * Certificate object, this prevents issues that can be caused by race conditions.
+ * Use Cert.value to get the certificate and Cert.busy to check ready state.
  * @class
  */
-const Certificate = class {
+const Cert = class {
     /**
      * Construct the object.
-     * Use Cert.value to get the certificate and Cert.busy to check ready state.
      * @constructor
      */
     constructor() {
@@ -55,9 +52,9 @@ const Certificate = class {
         this.onceReadyCallbacks = [];
     }
     /**
-     * Set this certificate, this will also mark it as ready and trigger all callbacks.
+     * Set this certificate, this will also mark it as ready and trigger callbacks.
      * @method
-     * @param {Certificate} val - The certificate
+     * @param {Certificate} val - The certificate.
      */
     setVal(val) {
         this.value = val;
@@ -216,8 +213,6 @@ const serverSbj = [
 /**
  * Get server extension. This cannot be a single global variable as I might be generating two certificates at the
  * same time and the extension is slightly different for each server. Refer to CAext for more information.
- * IP signing may not work properly:
- * 
  * @function
  * @param {Array.<stirng>} domain - The domains to sign.
  * @param {Array.<string>} ips - The IPs to sign.
@@ -296,7 +291,7 @@ const genCA = (callback) => {
         CAcert.cert.publicKey = keypair.publicKey;
         //Signing defaults to SHA1, which is not good anymore
         //https://github.com/digitalbazaar/forge/blob/80c7fd4e21ae83fa236ebb6a2f4748d54aa0dec0/lib/x509.js#L1032
-        CAcert.cert.sign(global.CA.key, forge.md.sha256.create());
+        CAcert.cert.sign(CAcert.key, forge.md.sha256.create());
         //Save the root certificate to files
         let done = 0;
         const onDone = () => {
@@ -319,9 +314,7 @@ const genCA = (callback) => {
     });
 };
 /**
- * Load certificate authority root certificate. This function assumes the files, if found, are properly formatted.
- * Errors could be thrown from node-forge, but I won't handle them here as it does print messages that are easy
- * to understand.
+ * Load certificate authority root certificate. This function assumes the files, if found, are valid.
  * @function
  * @param {Function} callback - The function to call when it is done.
  ** @param {boolean} result - True if files are found, false otherwise.
@@ -442,14 +435,34 @@ const loadCert = (cacheKey, callback) => {
  * Initialize certificate authority, don't call sign() before receiving callback from this function.
  * @function
  * @param {Funciton} callback - The function to call when Violenttls is ready.
- ** @param {Certificate} cert - The certificate for the proxy server itself.
  */
 exports.init = (callback) => {
     const onEnd = () => {
         //Load certificate for the proxy server
-        exports.sign(global.proxyDomains, global.proxyIPs, (cert) => {
-            global.localCert = cert;
-            callback();
+        loadCert("localhost", (result) => {
+            if (result) {
+                //Found, but I still need to check if it is going to expire, 2 months is going to be a safe value
+                let line = new Date();
+                //V8 will handle switching to next year
+                line.setMonth(line.getMonth() + 2);
+                if (line > forge.pki.certificateFromPem(certCache["localhost"].value.cert).validity.notAfter) {
+                    //Generate a new one
+                    genCert(global.proxyDomains, global.proxyIPs, "localhost", () => {
+                        global.localCert = certCache["localhost"].value;
+                        callback();
+                    });
+                } else {
+                    //Still good, just use it
+                    global.localCert = certCache["localhost"].value;
+                    callback();
+                }
+            } else {
+                //Generate a new one
+                genCert(global.proxyDomains, global.proxyIPs, "localhost", () => {
+                    global.localCert = certCache["localhost"].value;
+                    callback();
+                });
+            }
         });
     };
     loadCA((result) => {
@@ -480,62 +493,64 @@ exports.init = (callback) => {
 /**
  * Get a certificate for the current domain, pass it in directly, don't add wildcard.
  * @function
- * @param {Array.<string>} domains - The domains of the certificate.
- * @param {Array.<string>} ips - The ips of the certificate, refer to getServerExt() for more information.
+ * @param {string} domain - The domain of the certificate, a wildcard version will be automatically added.
  * @param {Function} callback - The function to call when the certificate is ready.
  ** @param {Certificate} - An object that can be directly passed to https.createServer().
  */
-exports.sign = (domains, ips, callback) => {
-    let key;
-    //I need to count how many dots there are, RegExp would not be faster as it will
-    //create an array anyway
+exports.sign = (domain, callback) => {
+    let cacheKey;
+    let domainsToSign;
+    //I need to count how many dots there are, RegExp would not be faster as it will create an array anyway
     let parts = domain.split(".");
     if (parts.length < 2) {
-        throw "Invalid hostname";
+        //Assume local address
+        cacheKey = domain;
+        domainsToSign = [domain];
     } else if (parts.length === 2) {
-        //Domain is like "example.com", since I can't sign `*.com`, I will sign "example.com"
-        //and "*.example.com"
-        key = `*.${domain}`;
+        //Domain is like "example.com", since I can't sign `*.com`, I will sign "example.com" and "*.example.com"
+        cacheKey = `*.${domain}`;
+        domainsToSign = [domain, cacheKey];
     } else {
         //Make the first part to be a wild card
         parts[0] = "*";
-        key = parts.join(".");
+        cacheKey = parts.join(".");
+        domainsToSign = [domain, cacheKey];
     }
-    //Load certificate from key
-    if (!certCache[key]) {
-        certCache[key] = new Cert();
+    //Check if I already gave the certificate
+    if (!certCache[cacheKey]) {
+        certCache[cacheKey] = new Cert();
         //Try to load certificates from files
-        loadCert(key, (result) => {
+        loadCert(cacheKey, (result) => {
             if (result) {
                 //Found, but I still need to check if it is going to expire, 2 months is going to be a safe value
                 let line = new Date();
                 //V8 will handle switching to next year
                 line.setMonth(line.getMonth() + 2);
-                if (line > forge.pki.certificateFromPem(certCache[key].value.cert).validity.notAfter) {
+                if (line > forge.pki.certificateFromPem(certCache[cacheKey].value.cert).validity.notAfter) {
                     //Generate a new one
-                    genCert(key, () => {
-                        callback(certCache[key].value);
+                    genCert(domainsToSign, [], cacheKey, () => {
+                        callback(certCache[cacheKey].value);
                     });
                 } else {
                     //Still good, just use it
-                    callback(certCache[key].value)
+                    callback(certCache[cacheKey].value)
                 }
             } else {
                 //Generate a new one
-                genCert(key, () => {
-                    callback(certCache[key].value);
+                genCert(domainsToSign, [], cacheKey, () => {
+                    callback(certCache[cacheKey].value);
                 });
             }
         });
-    } else if (certCache[key].busy) {
+    } else if (certCache[cacheKey].busy) {
         //There is probably a better way, but this is nice and easy, and I won't need an extra dependency
-        certCache[key].onceReady(() => {
-            callback(certCache[key].value);
+        certCache[cacheKey].onceReady(() => {
+            callback(certCache[cacheKey].value);
         });
     } else {
         //Certificate found, as this was verified before, I don't need to check for expiry date
         process.nextTick(() => {
-            callback(certCache[key].value)
+            callback(certCache[cacheKey].value)
         });
     }
 };
