@@ -442,7 +442,7 @@ const loadCert = (domainKey, callback) => {
                 callback(false);
                 return;
             }
-            tempCert.private = data;
+            tempCert.key = data;
             certCache[domainKey].setVal(tempCert);
             callback(true);
         });
