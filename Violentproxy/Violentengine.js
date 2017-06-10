@@ -5,7 +5,7 @@
  * Load network modules.
  * @const {Module}
  */
-const {https, http, net, url} = global;
+const {https, http, net, url, ws} = global;
 /**
  * Load other modules
  * @const {Module}
@@ -155,7 +155,9 @@ let requestEngine = (localReq, localRes) => {
                     requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, false, data);
                 }
             });
-            remoteRes.on("error", () => {
+            remoteRes.on("error", (err) => {
+                console.log("WARNING: An error occured when retrieving data from remote server.");
+                console.log(err);
                 //Something went wrong, drop the local connection
                 localRes.destroy();
             });
@@ -264,10 +266,19 @@ const DynamicServer = class {
         //The host where I have certificate for
         this.knownHosts = ["localhost", "127.0.0.1"];
         //Initialize server
-        this.server = https.createServer(localCert, () => { console.log("test"); });
-        //this.server.on("connection", this.onConnect);
-        //this.server.on("upgrade", () => { debugger; });
-        this.server.listen(this.port);
+        this.server = https.createServer({});
+        this.server.on("error", (err) => { console.log(err); });
+        this.server.on("clientError", (err) => { console.log(err); });
+        this.server.on("request", this.onRequest);
+        this.server.on("connect", this.onConnect);
+        this.server.addContext("localhost", localCert);
+        this.server.addContext("127.0.0.1", localCert);
+        this.ws = new ws.Server({ server: this.server });
+        this.ws.on("connection", this.onConnect);
+        this.server.listen({
+          
+           port: this.port,
+        });
     }
     /**
      * Schedule a function to call once the server is available again.
@@ -286,9 +297,11 @@ const DynamicServer = class {
             });
         } else {
             tls.sign(host, (cert) => {
+                console.log(cert);
                 //As the certificate is passed by reference, this won't fill RAM
                 this.knownHosts.push(host);
                 this.server.addContext(host, cert);
+                console.log(host);
                 //Call callback
                 callback();
             });
@@ -300,7 +313,7 @@ const DynamicServer = class {
      * @param {Socket} localSocket - The local socket.
      */
     onConnect(localSocket) {
-        debugger;
+        console.log(localSocket);
         let data = new Buffer(0);
         localSocket.on("data", (chunk) => {
             data = Buffer.concat(data, chunk);
@@ -312,6 +325,14 @@ const DynamicServer = class {
             console.log(debugArray);
             console.log(JSON.stringify(debugArray));
         });
+    }
+
+    onRequest(localReq, localRes) {
+        console.log("request");
+        console.log(localReq.url);
+        localRes.writeHead(200, "All Good");
+        localRes.write("Hi there");
+        localRes.end();
     }
 };
 /**
@@ -422,8 +443,9 @@ let connectEngine = (localReq, localSocket, localHead) => {
         //https://stackoverflow.com/questions/5757290/http-header-line-break-style
         //TODO: I don't have the "writeHead" shorcut anymore, need to implement HTTP/2 manually
         localSocket.write(`HTTP/${localReq.httpVersion} 200 Connection Established\r\n`);
-        if (localReq.headers["connection"] === "keep-alive") {
+        if (localReq.headers["connection"] === "keep-alive" || localReq.headers["proxy-connection"] === "keep-alive") {
             localSocket.write("Connection: keep-alive\r\n");
+            //localSocket.write("Proxy-Connection: keep-alive\r\n");
         }
         //Write an emply line to signal the user agent that HTTP header has ended
         localSocket.write("\r\n");
@@ -454,16 +476,18 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
     if (firstBytes[0] === 0x16 && firstBytes[1] === 0x03 && firstBytes[2] < 0x06) { //Testing for smaller than or equal to 0x05 just in case
         //Assuming all connection accepts SNI
         runningServers["dynamic"].prepare(host, () => {
-            const connection = net.connect(runningServers["dynamic"].port, (...args) => {
-                //Put the head that we have over
-                connection.write(localHead);
+            const connection = net.connect(runningServers["dynamic"].port, () => {
                 //Pipe the connection over to the server
                 localSocket.pipe(connection);
                 connection.pipe(localSocket);
-                //Resume the socket that we paused before
+                //Send the head that I got before over
+                localSocket.emit("data", localHead);
+                //Resume the socket that I paused before
                 localSocket.resume();
             });
-            connection.on("error", () => {
+            connection.on("error", (err) => {
+                console.log("WARNING: Local pipe broke.");
+                console.log(err);
                 localSocket.destroy();
             });
         });

@@ -4,7 +4,8 @@
     "url": "https://github.com/Violentproxy/Violentproxy/issues"
   },
   "dependencies": {
-    "node-forge": ">=0.7.1"
+    "node-forge": ">=0.7.1",
+    "ws": ">=3.0.0"
   },
   "description": "A free and open source implementation of an explicit proxy for content tampering.",
   "engines": {
