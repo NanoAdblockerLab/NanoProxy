@@ -1,4 +1,4 @@
-//5 TODOs to go
+//TODO: Test out if Chrome like our shortcut, we are not checking public suffix.
 
 //TLS engine for Violentproxy
 //Note that "SSL" often means "SSL/TLS", OpenSSL fully supports TLS related calculations and functions
@@ -7,9 +7,8 @@
 
 /**
  * Load modules.
- * I will use node-forge, as spawning a child-process every time I need to sign a certificate isn't really going
- * to be faster.
- * Also, it's a pain to get OpenSSL to work on Windows.
+ * I will use node-forge because it's a pain to get OpenSSL working on Windows.
+ * Certificates lasts a year, things would be quite slow in the beginning, but will get better later.
  * @const {Module}
  */
 const {forge, fs} = global;
@@ -22,25 +21,27 @@ const {forge, fs} = global;
 const certFolder = "./Violentproxy/Violentcert";
 
 /**
- * The root certificate and its keys. Will be initialized when init() is called.
+ * The certificate authority root certificate and its keys. Will be initialized when init() is called.
  * @const {Certificate}
  */
-let CAcert, CAprivate, CApublic;
+global.CA = {};
 /**
- * The certificate for the proxy server itself. Will be initialized when init() is called.
+ * The certificate authority root certificate, in the format that https.createServer() expects.
  * @const {Certificate}
  */
-let proxyCert, proxyPrivate;
+global.CAcert = {};
 /**
  * Server certificates cache.
  * Will be a dictionary of domain to certificate. The certificate object can be passed directly to https.createServer().
  * A domain key must be like "*.example.com", the wildcard is required.
- * TODO: Add a timer that removes certificates when they are not used for extended amount of time.
  * @var {Dictionary.<Cert>}
  */
 let certCache = {};
 /**
  * Certificate object, this prevents issues that can be caused in race condition.
+ * The reference to the certificate will always be kept when addContext() is called, so I can't unload certificate to
+ * release memory. I don't think there is a way to remove the context, it would be an expensive process to keep track
+ * of the activity of each context anyway, certificates are pretty small, it should be fine.
  * @class
  */
 const Cert = class {
@@ -50,8 +51,9 @@ const Cert = class {
      * @constructor
      */
     constructor() {
+        this.value = null;
         this.busy = true;
-        this.onReadyCallbacks = [];
+        this.onceReadyCallbacks = [];
     }
     /**
      * Set this certificate, this will also mark it as ready and trigger all callbacks.
@@ -64,17 +66,20 @@ const Cert = class {
         //Call each callback asynchronously
         let i = 0;
         const call = () => {
-            this.onReadyCallbacks[i++]();
-            if (i < this.onReadyCallbacks.length) {
+            //I don't need to shift the array because I already flipped this.busy flag
+            this.onceReadyCallbacks[i++]();
+            if (i < this.onceReadyCallbacks.length) {
                 process.nextTick(call);
             } else {
                 //Free memory
-                this.onReadyCallbacks = [];
+                delete this.onceReadyCallbacks;
             }
         }
         //Check if I have callbacks waiting
-        if (this.onReadyCallbacks.length) {
+        if (this.onceReadyCallbacks.length) {
             process.nextTick(call);
+        } else {
+            delete this.onceReadyCallbacks;
         }
     }
     /**
@@ -86,7 +91,7 @@ const Cert = class {
         if (this.busy) {
             this.onReadyCallbacks.push(func);
         } else {
-            func();
+            process.nextTick(func);
         }
     }
 }
@@ -102,24 +107,23 @@ const CAsbj = [
         value: "World",
     },
     {
-        shortName: "O", //Organization, company, etc.
+        shortName: "O", //Organization or company
         value: "Violentproxy",
     },
     {
-        shortName: "OU", //Organizational Unit, like department
+        shortName: "OU", //Organizational unit or department
         value: "Violenttls Engine",
     },
     {
-        shortName: "ST", //State, province, etc.
+        shortName: "ST", //State or province
         value: "World",
     },
     {
         shortName: "CN", //Common Name, can be anything
         value: "Violentca",
     },
-    //Optional
-    {
-        shortName: "L", //City, town, etc.
+    { //Optional
+        shortName: "L", //City or town
         value: "World",
     },
 ];
@@ -145,7 +149,6 @@ const CAext = [
         //https://github.com/digitalbazaar/forge/blob/e548bffb2b4e152057adfaf2648c82080b83fdf3/lib/oids.js#L152
         name: "keyUsage",
         digitalSignature: true,
-        //nonRepudiation: true, //TODO: I'm not sure if browsers will like it if this is missing, need to test it out
         keyEncipherment: true,
         dataEncipherment: true,
         keyCertSign: true,
@@ -153,19 +156,8 @@ const CAext = [
     },
     {
         //https://github.com/digitalbazaar/forge/blob/80c7fd4e21ae83fa236ebb6a2f4748d54aa0dec0/lib/x509.js#L1431
-        //https://github.com/digitalbazaar/forge/blob/80c7fd4e21ae83fa236ebb6a2f4748d54aa0dec0/lib/x509.js#L1594
         name: "subjectAltName",
-        altNames: [
-            {
-                type: 2, //DNS Name, domain
-                value: "localhost",
-            },
-            {
-                type: 7, //IP
-                ip: "127.0.0.1",
-            },
-            //TODO: Dynamically load other IPs and domains
-        ],
+        altNames: global.CAaltNames,
     },
     {
         //https://github.com/digitalbazaar/forge/blob/80c7fd4e21ae83fa236ebb6a2f4748d54aa0dec0/lib/x509.js#L1554
@@ -208,8 +200,7 @@ const serverSbj = [
         shortName: "CN", //Connon Name, can be anything
         value: "Violentserver",
     },
-    //Optional
-    {
+    { //Optional
         shortName: "L", //City, town, etc.
         value: "World",
     },
@@ -266,57 +257,59 @@ const getServerExt = (domain) => {
  * @param {Function} callback - The function to call when the root certificate is ready.
  */
 const genCA = (callback) => {
-    console.log("INFO: Generating certificate authority root certificate...");
-    //Chrome will reject certificate that has validity longer than 39 months (3.25 years)
-    //The root certificate will last (only) 3 years because it is also used as the server certificate for Userscript callback
+    global.log("INFO", "Generating certificate authority root certificate...");
+    //Chromium will reject certificate that has validity longer than 39 months (3.25 years)
+    //The root certificate will last (only) 3 years because it is also used as the server certificate for the proxy itself
     //A new one will be generated when the validity is less than 1 year, this is because server certificates are valid for 1 year
-    //and the root certificate must be valid for longer
+    //and the root certificate must be valid for longer by the time the server certificate is signed
+    //Server certificates are generated again when their validity is less than 1 month, I don't think anyone will keep the proxy
+    //server running continuously for more than 1 month.
     let startDate = new Date();
     //V8 will handle switching to last month
     startDate.setDate(startDate.getDate() - 1);
-    let endDate = new Date(); //Need to create a new one
+    let endDate = new Date();
     endDate.setFullYear(endDate.getFullYear() + 3);
-    //Generate key pair
+    //Generate RSA key pair
     forge.pki.rsa.generateKeyPair({ bits: 2048 }, (err, keypair) => {
         //Abort on error
         if (err) {
-            console.log("ERROR: Could not generate RSA key pair for the certificate authority root certificate.");
+            global.log("ERROR", "Could not generate RSA key pair for the certificate authority root certificate.");
             throw err;
         }
-        //Save keys
-        CAprivate = keypair.privateKey;
-        CApublic = keypair.publicKey;
+        //Save private key
+        global.CA.key = forge.pki.privateKeyToPem(keypair.privateKey);
         //Create certificate
-        CAcert = forge.pki.createCertificate();
+        let CAcert = forge.pki.createCertificate();
         CAcert.validity.notBefore = startDate;
         CAcert.validity.notAfter = endDate;
         CAcert.setIssuer(CAsbj);
         CAcert.setSubject(CAsbj);
         CAcert.setExtensions(CAext);
-        CAcert.publicKey = CApublic;
+        CAcert.publicKey = keypair.publicKey;
         //Signing defaults to SHA1, which is not good anymore
         //https://github.com/digitalbazaar/forge/blob/80c7fd4e21ae83fa236ebb6a2f4748d54aa0dec0/lib/x509.js#L1032
-        CAcert.sign(CAprivate, forge.md.sha256.create());
+        CAcert.sign(global.CA.key, forge.md.sha256.create());
+        //Save certificate to global variable
+        global.CA.cert = forge.pki.certificateToPem(CAcert);
         //Save the root certificate to files
         let done = 0;
         const onDone = () => {
-            console.log("NOTICE: Certificate authority root certificate generated, don't forget to install it.");
-            console.log(`NOTICE: The certificate is located at ${certFolder}/Violentca.crt`);
-            //TODO: Test out to see if Chrome accepts the root certificate for the proxy server itself
+            global.log("NOTICE", "Certificate authority root certificate generated, don't forget to install it.");
+            global.log("NOTICE", `The certificate is located at ${certFolder}/Violentca.crt`);
             callback();
         };
         const onTick = (err) => {
             if (err) {
-                console.log("ERROR: Could not save certificate authority root certificate.");
+                global.log("ERROR", "Could not save certificate authority root certificate.");
                 throw err;
             } else {
                 (++done === 3) && onDone();
             }
         };
         //I'll write all 3 files in parallel
-        fs.writeFile(`${certFolder}/Violentca.crt`, forge.pki.certificateToPem(CAcert), onTick);
-        fs.writeFile(`${certFolder}/Violentca.public`, forge.pki.publicKeyToPem(CApublic), onTick);
-        fs.writeFile(`${certFolder}/Violentca.private`, forge.pki.privateKeyToPem(CAprivate), onTick);
+        fs.writeFile(`${certFolder}/Violentca.crt`, forge.pki.certificateToPem(global.CA.cert), onTick);
+        fs.writeFile(`${certFolder}/Violentca.public`, forge.pki.publicKeyToPem(keypair.publicKey), onTick);
+        fs.writeFile(`${certFolder}/Violentca.private`, forge.pki.privateKeyToPem(global.CA.key), onTick);
     });
 };
 /**
@@ -334,21 +327,14 @@ const loadCA = (callback) => {
             callback(false);
             return;
         }
-        CAcert = forge.pki.certificateFromPem(data);
-        fs.readFile(`${certFolder}/Violentca.public`, (err, data) => {
+        global.CA.cert = forge.pki.certificateFromPem(data);
+        fs.readFile(`${certFolder}/Violentca.private`, (err, data) => {
             if (err) {
                 callback(false);
                 return;
             }
-            CApublic = forge.pki.publicKeyFromPem(data);
-            fs.readFile(`${certFolder}/Violentca.private`, (err, data) => {
-                if (err) {
-                    callback(false);
-                    return;
-                }
-                CAprivate = forge.pki.privateKeyFromPem(data);
-                callback(true);
-            });
+            global.CA.key = forge.pki.privateKeyFromPem(data);
+            callback(true);
         });
     });
 };
@@ -357,12 +343,12 @@ const loadCA = (callback) => {
  * Generate a server certificate. Refer to genCA() for more information.
  * The new certificate will be saved to cache as well as to files.
  * @function
- * @param {string} domainKey - The key for the cache dictionary.
+ * @param {string} domainKey - The key for the certificate cache dictionary.
  * @param {Function} callback - The function to call when it is done.
  */
 const genCert = (domainKey, callback) => {
     const path = `${certFolder}/+${domainKey.substring(1)}`;
-    console.log(`INFO: Generating server certificate for ${domainKey}...`);
+    global.log("INFO", `Generating server certificate for ${domainKey}...`);
     //Server certificate lasts 1 year
     let startDate = new Date();
     startDate.setDate(startDate.getDate() - 1);
@@ -370,11 +356,9 @@ const genCert = (domainKey, callback) => {
     endDate.setFullYear(endDate.getFullYear() + 1);
     forge.pki.rsa.generateKeyPair({ bits: 2048 }, (err, keypair) => {
         if (err) {
-            console.log(`ERROR: Could not create RSA key pair for server certificate for ${domainKey}.`);
+            global.log("ERROR", `Could not create RSA key pair for server certificate for ${domainKey}.`);
             throw err;
         }
-        const privateKey = keypair.privateKey;
-        const publucKey = keypair.publicKey;
         let serverCert = forge.pki.createCertificate();
         serverCert.validity.notBefore = startDate;
         serverCert.validity.notAfter = endDate;
@@ -382,19 +366,19 @@ const genCert = (domainKey, callback) => {
         serverCert.setSubject(serverSbj);
         serverCert.setExtensions(getServerExt(domainKey.substring(2))); //Trim off "*."
         serverCert.publicKey = publucKey;
-        serverCert.sign(CAprivate, forge.md.sha256.create());
+        serverCert.sign(global.CA.key, forge.md.sha256.create());
         let done = 0;
         const onDone = () => {
-            console.log(`INFO: Server certificate for ${domainKey} is generated.`);
+            global.log("INFO", `Server certificate for ${domainKey} is generated.`);
             certCache[domainKey].setVal({
                 cert: forge.pki.certificateToPem(serverCert),
-                key: forge.pki.privateKeyToPem(privateKey),
+                key: forge.pki.privateKeyToPem(keypair.privateKey),
             });
             callback();
         };
         const onTick = (err) => {
             if (err) {
-                console.log(`ERROR: Could not save server certificate for ${domainKey}.`);
+                global.log("ERROR", `Could not save server certificate for ${domainKey}.`);
                 throw err;
             } else {
                 (++done === 3) && onDone();
@@ -402,12 +386,12 @@ const genCert = (domainKey, callback) => {
         };
         fs.mkdir(path, (err) => {
             if (err) {
-                console.log(`ERROR: Could not save server certificate for ${domainKey}.`);
+                global.log("ERROR", `Could not save server certificate for ${domainKey}.`);
                 throw err;
             } else {
                 fs.writeFile(`${path}/Violentcert.crt`, forge.pki.certificateToPem(serverCert), onTick);
-                fs.writeFile(`${path}/Violentcert.public`, forge.pki.publicKeyToPem(publucKey), onTick);
-                fs.writeFile(`${path}/Violentcert.private`, forge.pki.privateKeyToPem(privateKey), onTick);
+                fs.writeFile(`${path}/Violentcert.public`, forge.pki.publicKeyToPem(keypair.publicKey), onTick);
+                fs.writeFile(`${path}/Violentcert.private`, forge.pki.privateKeyToPem(keypair.privateKey), onTick);
             }
         });
     });
@@ -423,27 +407,22 @@ const genCert = (domainKey, callback) => {
 const loadCert = (domainKey, callback) => {
     //Convert domainKey to file name, the assumption below is safe
     const path = `${certFolder}/+${domainKey.substring(1)}`;
-    //As I need to keep the cache entry to be "locked" until I'm ready to update it,
-    //I need to construct a temporary object
-    let tempCert = {
-        cert: null,
-        key: null,
-    };
     //Read the files, this is different than loading root certificate, since https.createServer expects
     //PEM format and it doesn't need the public key
-    fs.readFile(`${path}/Violentcert.crt`, (err, data) => {
+    fs.readFile(`${path}/Violentcert.crt`, (err, cert) => {
         if (err) {
             callback(false);
             return;
         }
-        tempCert.cert = data;
-        fs.readFile(`${path}/Violentcert.private`, (err, data) => {
+        fs.readFile(`${path}/Violentcert.private`, (err, key) => {
             if (err) {
                 callback(false);
                 return;
             }
-            tempCert.key = data;
-            certCache[domainKey].setVal(tempCert);
+            certCache[domainKey].setVal({
+                cert: cert,
+                key: key,
+            });
             callback(true);
         });
     });
@@ -457,10 +436,11 @@ const loadCert = (domainKey, callback) => {
  */
 exports.init = (callback) => {
     const onEnd = () => {
-        callback({
-            cert: forge.pki.certificateToPem(CAcert),
-            key: forge.pki.privateKeyToPem(CAprivate),
-        });
+        global.CAcert = {
+            cert: forge.pki.certificateToPem(global.CA.cert),
+            key: forge.pki.privateKeyToPem(global.CA.key),
+        };
+        callback();
     };
     loadCA((result) => {
         if (result) {
@@ -468,7 +448,7 @@ exports.init = (callback) => {
             //are valid for 1 year
             let line = new Date();
             line.setFullYear(line.getFullYear() + 1);
-            if (line > CAcert.validity.notAfter) {
+            if (line > global.CA.cert.validity.notAfter) {
                 console.log("NOTICE: Certificate authority is going to expire soon, generating a new one...");
                 console.log("NOTICE: Don't uninstall the old certificate yet, as some server certificates are signed " +
                     "with it and may still be used.");
@@ -489,7 +469,6 @@ exports.init = (callback) => {
 
 /**
  * Get a certificate for the current domain, pass it in directly, don't add wildcard.
- * TODO: Test out if Chrome like our shortcut, we are not checking public suffix.
  * @function
  * @param {string} domain - The domain, must be something like "example.com".
  * @param {Function} callback - The function to call when the certificate is ready.

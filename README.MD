@@ -11,7 +11,9 @@ This should be possible in theory, it may or may not work out in the end.
 
 But hey, it does start, try it out: 
 ```Bash
-node init.js
+npm install
+npm debug
+
 curl -x localhost:12345 example.com
 ```
 

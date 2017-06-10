@@ -17,6 +17,7 @@
   "name": "violentproxy",
   "repository": "https://github.com/Violentproxy/Violentproxy",
   "scripts": {
+    "debug": "node --inspect init.js",
     "start": "node init.js"
   },
   "version": "0.0.1"
