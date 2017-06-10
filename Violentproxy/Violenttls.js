@@ -1,5 +1,3 @@
-//TODO: Test out if Chrome like our shortcut, we are not checking public suffix.
-
 //TLS engine for Violentproxy
 //Note that "SSL" often means "SSL/TLS", OpenSSL fully supports TLS related calculations and functions
 //As of 2017, SSL is no longer used and its support is dropped by modern browsers
@@ -85,7 +83,7 @@ const Cert = class {
     /**
      * Schedule a function to call once the certificate is ready.
      * @method
-     * @param {Function} func - The funtion to call.
+     * @param {Function} func - The funtion to call once the certificate is ready.
      */
     onceReady(func) {
         if (this.busy) {
@@ -449,18 +447,18 @@ exports.init = (callback) => {
             let line = new Date();
             line.setFullYear(line.getFullYear() + 1);
             if (line > global.CA.cert.validity.notAfter) {
-                console.log("NOTICE: Certificate authority is going to expire soon, generating a new one...");
-                console.log("NOTICE: Don't uninstall the old certificate yet, as some server certificates are signed " +
+                global.log("NOTICE", "Certificate authority is going to expire soon, generating a new one...");
+                global.log("NOTICE", ": Don't uninstall the old certificate yet, as some server certificates are signed " +
                     "with it and may still be used.");
                 //Generate new one
                 genCA(onEnd);
             } else {
-                console.log("INFO: Certificate authority root certificate loaded.");
+                global.log("INFO", "Certificate authority root certificate loaded.");
                 //All good
                 onEnd();
             }
         } else {
-            console.log("INFO: No certificate authority found, generating a new one...");
+            global.log("INFO", "No certificate authority found, generating a new one...");
             //Generate new one
             genCA(onEnd);
         }
@@ -507,10 +505,7 @@ exports.sign = (domain, callback) => {
                     });
                 } else {
                     //Still good, just use it
-                    //Schedule for next tick to make it asynchronous
-                    process.nextTick(() => {
-                        callback(certCache[key].value)
-                    });
+                    callback(certCache[key].value)
                 }
             } else {
                 //Generate a new one

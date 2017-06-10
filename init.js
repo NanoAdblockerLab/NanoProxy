@@ -26,6 +26,11 @@ global.CAaltNames = [
         ip: "127.0.0.1",
     },
 ];
+//Other global variables:
+//global.CA: The certificate authority root certificate
+//global.CAcert: The certificate authority root certificate in a format that https.createServer() expects
+//global.RequestDecision: The available decisions for the request patcher, more information can be found
+//in ./Violentproxy/Violentengine.js
 
 /**
  * Log controller, always use this function and not console.log().

@@ -7,16 +7,18 @@ Violentproxy is a monkey-in-the-middle proxy that aims at doing the same monkey 
 it has different restrictions and can possibly work together with Violentmonkey and uBlock Origin 
 to create a better browsing experience. 
 
-This should be possible in theory, it may or may not work out in the end. 
-
-But hey, it does start, try it out: 
+It is in very early development, it may or may not start, if you want to try it out: 
 ```Bash
 npm install
 npm debug
 
-curl -x localhost:12345 example.com
+curl -x localhost:12345 https://example.com -k
 ```
 
-![screenshot](http://i.imgur.com/itQBQjq.png)
-
 Please open an issue if there is something you want me to know. 
+
+## TODO: 
+
+1. Check if Chromium likes my shortcut in Violentssl, I am not checking public suffix. 
+2. Test out how WebRTC works with my proxy. (Connecting to STUN and TURN servers, as well as direct P2P) 
+3. Implement WebSocket proxy. 
