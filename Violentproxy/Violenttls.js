@@ -363,7 +363,7 @@ const genCert = (domains, ips, cacheKey, callback) => {
         let serverCert = forge.pki.createCertificate();
         serverCert.validity.notBefore = startDate;
         serverCert.validity.notAfter = endDate;
-        serverCert.setIssuer(CAcert.issuer.attributes);
+        serverCert.setIssuer(CAcert.cert.issuer.attributes);
         serverCert.setSubject(serverSbj);
         serverCert.setExtensions(getServerExt(domains, ips));
         serverCert.publicKey = keypair.publicKey;
@@ -439,6 +439,7 @@ const loadCert = (cacheKey, callback) => {
 exports.init = (callback) => {
     const onEnd = () => {
         //Load certificate for the proxy server
+        certCache["localhost"] = new Cert();
         loadCert("localhost", (result) => {
             if (result) {
                 //Found, but I still need to check if it is going to expire, 2 months is going to be a safe value
@@ -471,7 +472,7 @@ exports.init = (callback) => {
             //are valid for 2 years
             let line = new Date();
             line.setFullYear(line.getFullYear() + 3);
-            if (line > global.CA.cert.validity.notAfter) {
+            if (line > CAcert.cert.validity.notAfter) {
                 global.log("NOTICE", "Certificate authority is going to expire soon, generating a new one...");
                 global.log("NOTICE", ": Don't uninstall the old certificate yet, as some server certificates are signed " +
                     "with it and may still be used.");

@@ -54,7 +54,7 @@ let requestEngine = (localReq, localRes) => {
         options = url.parse(localReq.url);
     } catch (err) {
         //Bad request
-        global.log("WARNING", `Received an invalid REQUEST request:\n${err.message}`);
+        global.log("WARNING", `Received an invalid REQUEST request: ${err.message}`);
         localRes.destroy();
         return;
     }
@@ -64,7 +64,7 @@ let requestEngine = (localReq, localRes) => {
     options.auth = localReq.auth;
     //Check for host
     if (localReq.url[0] === "/") {
-        global.log("WARNING", "Received an invalid REQUEST request:\nNo host give.");
+        global.log("WARNING", "Received an invalid REQUEST request: No host give.");
         localRes.destroy();
         return;
     }
@@ -131,7 +131,7 @@ let requestEngine = (localReq, localRes) => {
                         zlib.unzip(data, (err, result) => {
                             if (err) {
                                 //Could not parse
-                                global.log("WARNING", `Could not parse server response:\n${err.message}`);
+                                global.log("WARNING", `Could not parse server response: ${err.message}`);
                                 localRes.destroy();
                             } else {
                                 requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, result);
@@ -148,7 +148,7 @@ let requestEngine = (localReq, localRes) => {
             });
             remoteRes.on("error", (err) => {
                 //Something went wrong
-                global.log("WARNING", `Could not connect to remote server:\n${err.message}`);
+                global.log("WARNING", `Could not connect to remote server: ${err.message}`);
                 localRes.destroy();
             });
             remoteRes.on("aborted", () => {
@@ -157,7 +157,7 @@ let requestEngine = (localReq, localRes) => {
             });
         });
         request.on("error", (err) => {
-            global.log("WARNING", `Could not connect to remote server:\n${err.message}`);
+            global.log("WARNING", `Could not connect to remote server: ${err.message}`);
             localRes.destroy();
         });
         request.end();
@@ -222,10 +222,10 @@ const DynamicServer = class {
         this.server = https.createServer({});
         //Handle error
         this.server.on("error", (err) => {
-            global.log("WARNING", `An error occured on the dynamic server:\n${err.message}`);
+            global.log("WARNING", `An error occured on the dynamic server: ${err.message}`);
         });
         this.server.on("clientError", (err, localSocket) => {
-            global.log("WARNING", `A client error occured on the dynamic server:\n${err.message}`)
+            global.log("WARNING", `A client error occured on the dynamic server: ${err.message}`)
             localSocket.destroy();
         });
         //Bind event handler
@@ -281,7 +281,7 @@ let connectEngine = (localReq, localSocket, localHead) => {
     //Parse request
     let [host, port, ...rest] = localReq.url.split(":"); //Expected to be something like example.com:443
     if (rest.length > 0 || !host || host.includes("*") || !host.includes(".")) {
-        global.log("WARNING", `Received an invalid CONNECT request:\nRequest URL is malformed.`);
+        global.log("WARNING", `Received an invalid CONNECT request: Request URL is malformed.`);
         localSocket.destroy();
         return;
     }
@@ -293,7 +293,7 @@ let connectEngine = (localReq, localSocket, localHead) => {
     localSocket.pause();
     //See what I need to do
     exports.onConnect(`${host}:${port}`, (decision) => {
-        switch (decision) {
+        switch (decision.result) {
             case global.RequestDecision.Allow:
                 //Do nothing, process it normally
                 break;
@@ -341,6 +341,8 @@ let connectEngine = (localReq, localSocket, localHead) => {
             }
             //Write an emply line to signal the user agent that HTTP header has ended
             localSocket.write("\r\n");
+            //Resume the socket so I can receive the handshake
+            localSocket.resume();
         }
     });
 };
@@ -374,12 +376,12 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
                 localSocket.resume();
             });
             connection.on("error", (err) => {
-                global.log("WARNING", `An error occured when connecting to dynamic server:\n${err.message}`);
+                global.log("WARNING", `An error occured when connecting to dynamic server: ${err.message}`);
                 localSocket.destroy();
             });
         });
     } else {
-        global.log("WARNING", "Received an invalid CONNECT request:\nData sent by user agent is not a TLS handshake.");
+        global.log("WARNING", "Received an invalid CONNECT request: Data sent by user agent is not a TLS handshake.");
         localSocket.destroy();
     }
 };
@@ -401,10 +403,10 @@ exports.start = (useTLS = false) => {
         server.on("connect", connectEngine);
         //Handle errors
         server.on("error", (err) => {
-            global.log("WARNING", `An error occured on the main proxy server:\n${err.message}`);
+            global.log("WARNING", `An error occured on the main proxy server: ${err.message}`);
         });
         server.on("clientError", (err, socket) => {
-            global.log("WARNING", `A client error occurred on the main proxy server:\n${err.message}`);
+            global.log("WARNING", `A client error occurred on the main proxy server: ${err.message}`);
             socket.destroy();
         });
         //Listen to the port
