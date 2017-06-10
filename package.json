@@ -12,7 +12,7 @@
     "node": ">=8.1.0"
   },
   "homepage": "https://github.com/Violentproxy/Violentproxy",
-  "license": "GNU GPL v3",
+  "license": "GPL-3.0",
   "main": "init.js",
   "name": "violentproxy",
   "repository": "https://github.com/Violentproxy/Violentproxy",
