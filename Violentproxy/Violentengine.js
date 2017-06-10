@@ -11,11 +11,6 @@ const {https, http, net, url, ws} = global;
  * @const {Module}
  */
 const {agent, zlib, tls} = global;
-/**
- * The certificate for localhost. Will be initialized by exports.start().
- * @const {Certificate}
- */
-let localCert;
 
 /**
  * Get MIME type from header.
@@ -49,7 +44,6 @@ const isText = (mimeType) => {
  * Proxy engine for REQUEST request.
  * In this mode, the user agent gives me the full control, so I don't need to create servers on the fly.
  * This is generally used for HTTP requests.
- * TODO: Add WebSocket and WebSocket Secure handling.
  * @function
  * @param {IncomingMessage} localReq - The local request object.
  * @param {ServerResponse} localRes - The local response object.
@@ -153,8 +147,7 @@ let requestEngine = (localReq, localRes) => {
                 }
             });
             remoteRes.on("error", (err) => {
-                global.log("WARNING: An error occured when retrieving data from remote server.");
-                console.log(err);
+                global.log("WARNING", `An error occured when retrieving data from remote server.\n${err.message}`);
                 //Something went wrong, drop the local connection
                 localRes.destroy();
             });
@@ -164,9 +157,8 @@ let requestEngine = (localReq, localRes) => {
             });
         });
         request.on("error", (err) => {
-            global.log("WARNING", `: An error occurred when handling REQUEST request to ${localReq.url}, this usually means ` +
-                `the client sent an invalid request or you are not connected to the Internet.`);
-            console.log(err.message);
+            global.log("WARNING", `An error occurred when handling REQUEST request to ${localReq.url}, this usually means ` +
+                `the client sent an invalid request or you are not connected to the Internet.${err.message}`);
             localRes.destroy();
         });
         request.end();

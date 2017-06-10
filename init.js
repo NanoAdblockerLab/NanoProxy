@@ -17,20 +17,11 @@ const logLevel = 4;
  */
 const useTLS = false;
 /**
- * Subject alternative names for the certificate authority, must be set before the first run.
- * More information:
- * https://github.com/digitalbazaar/forge/blob/80c7fd4e21ae83fa236ebb6a2f4748d54aa0dec0/lib/x509.js#L1594
+ * The domains and IPs of the proxy server, must be set before the first run.
+ * @const {Array.<string>}
  */
-global.CAaltNames = [
-    {
-        type: 2, //Domain name or DNS name
-        value: "localhost",
-    },
-    {
-        type: 7, //IP
-        ip: "127.0.0.1",
-    },
-];
+global.proxyDomains = ["localhost"];
+global.proxyIPs = ["127.0.0.1"];
 //Other global variables:
 //global.localCert: The certificate for the proxy server itself
 //global.RequestDecision: The available decisions for the request patcher, more information can be found
