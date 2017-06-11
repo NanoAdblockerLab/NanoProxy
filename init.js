@@ -44,7 +44,7 @@ Server: Apache/2.4.7 (Ubuntu)
 global.RequestDecision = {
     /**
      * Process the request normally. The response will be processed by response patcher later.
-     * This is allowed in REQUEST and CONNECT requests patcher.
+     * This is allowed in both REQUEST and CONNECT requests patcher.
      * No extra fields required.
      */
     Allow: 1,
@@ -57,7 +57,7 @@ global.RequestDecision = {
     Empty: 2,
     /**
      * Immediately close the connection.
-     * This is only allowed in REQUEST requests patcher.
+     * This is allowed in both REQUEST and CONNECT requests patcher.
      * No extra fields required.
      */
     Deny: 3,
@@ -76,7 +76,8 @@ global.RequestDecision = {
      */
     Redirect: 4,
     /**
-     * Directly connect the user to the remote server.
+     * Directly connect the user agent to the remote server. I'll completely lose the control over what flows in this
+     * pipe, no other events will be triggered for this pipe.
      * This is only allowed in CONNECT requests patcher.
      * No extra fields required.
      */

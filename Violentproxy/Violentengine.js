@@ -297,6 +297,9 @@ let connectEngine = (localReq, localSocket, localHead) => {
             case global.RequestDecision.Allow:
                 //Do nothing, process it normally
                 break;
+            case global.RequestDecision.Deny:
+                localSocket.destroy();
+                return; //Stop here
             case global.RequestDecision.Pipe:
                 const connection = net.connect(port, host, () => {
                     //Pipe the connection over to the server
