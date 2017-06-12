@@ -1,6 +1,4 @@
-# Violentproxy
-
-[![Dependencies](https://david-dm.org/Violentproxy/Violentproxy.svg)](https://david-dm.org/Violentproxy/Violentproxy)
+# Violentproxy [![Dependencies](https://david-dm.org/Violentproxy/Violentproxy.svg)](https://david-dm.org/Violentproxy/Violentproxy)
 
 Named after [Violentmonkey](https://github.com/violentmonkey/violentmonkey), 
 Violentproxy is a monkey-in-the-middle proxy server that aims at doing the same monkey things but in a different way, 
