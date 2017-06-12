@@ -222,7 +222,7 @@ const DynamicServer = class {
         this.server = https.createServer({});
         //Handle error
         this.server.on("error", (err) => {
-            global.log("WARNING", `An error occured on the dynamic server: ${err.message}`);
+            global.log("ERROR", `An error occured on the dynamic server: ${err.message}`);
         });
         this.server.on("clientError", (err, localSocket) => {
             global.log("WARNING", `A client error occured on the dynamic server: ${err.message}`)
@@ -406,7 +406,7 @@ exports.start = (useTLS = false) => {
         server.on("connect", connectEngine);
         //Handle errors
         server.on("error", (err) => {
-            global.log("WARNING", `An error occured on the main proxy server: ${err.message}`);
+            global.log("ERROR", `An error occured on the main proxy server: ${err.message}`);
         });
         server.on("clientError", (err, socket) => {
             global.log("WARNING", `A client error occurred on the main proxy server: ${err.message}`);

@@ -8,7 +8,7 @@
  * I will use node-forge because it's a pain to get OpenSSL working on Windows.
  * @const {Module}
  */
-const {forge, fs} = global;
+const { forge, fs } = global;
 
 /**
  * The place where all certificates will be saved.
@@ -255,6 +255,7 @@ const getServerExt = (domains, ips) => {
             ip: ips[i],
         });
     }
+    console.log(domains, ips);
     return tempExt;
 };
 
@@ -348,7 +349,7 @@ const loadCA = (callback) => {
  * @param {Function} callback - The function to call when it is done.
  */
 const genCert = (domains, ips, cacheKey, callback) => {
-    const path = `${certFolder}/+${cacheKey.substring(1)}`;
+    const path = `${certFolder}/${cacheKey.replace("+", "*")}`;
     global.log("INFO", `Generating server certificate for ${cacheKey}...`);
     //Server certificate lasts 2 year, because Chromium will soon start to reject certificates that lasts too long
     let startDate = new Date();
@@ -409,7 +410,7 @@ const genCert = (domains, ips, cacheKey, callback) => {
  */
 const loadCert = (cacheKey, callback) => {
     //Convert domainKey to file name, the assumption below is safe
-    const path = `${certFolder}/+${cacheKey.substring(1)}`;
+    const path = `${certFolder}/${cacheKey.replace("+", "*")}`;
     //Read the files, this is different than loading root certificate, since https.createServer expects
     //PEM format and it doesn't need the public key
     fs.readFile(`${path}/Violentcert.crt`, (err, cert) => {
