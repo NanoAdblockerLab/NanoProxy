@@ -17,7 +17,7 @@ const { agent, zlib, tls } = global;
  * @param {string} str - The encoding related header entry.
  * @param {string} [def="text/html"] - The default value.
  */
-const getType = (str, def = "text/html") => {
+const getType = (str = "", def = "text/html") => {
     const parts = str.split(/,|;/);
     for (let i = 0; i < parts.length; i++) {
         if (!parts[i].includes("*") && parts[i].includes("/")) {
@@ -311,7 +311,7 @@ let connectEngine = (localReq, localSocket, localHead) => {
                     localSocket.resume();
                 });
                 return;
-            default: 
+            default:
                 throw new Error(`connectEngine() does not accept ${decision} as a request decision.`);
         }
         //Since SSLv2 is now prohibited and Chromium is already rejecting SSLv3 connections, in 2017, I can safely assume only TLS is used

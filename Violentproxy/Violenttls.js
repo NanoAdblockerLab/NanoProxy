@@ -85,7 +85,7 @@ const Cert = class {
      */
     onceReady(func) {
         if (this.busy) {
-            this.onReadyCallbacks.push(func);
+            this.onceReadyCallbacks.push(func);
         } else {
             process.nextTick(func);
         }
