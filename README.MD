@@ -17,10 +17,9 @@ curl -x localhost:12345 https://example.com -k
 
 Please open an issue if there is something you want me to know. 
 
-## TODO: 
+## TODO
 
-1. Check if Chromium likes my shortcut in Violenttls, I am not checking public suffix. 
-2. Implement POST mode and WebSocket proxy. 
-3. Test out how WebRTC works with my proxy (Connecting to STUN and TURN servers, as well as direct P2P). 
-4. Add support for user agents that do not support Server Name Indication. 
-5. Add HTTP/2 support. 
+1. Test out if Chromium accepts certificate that covers a full public suffix. 
+2. XMLHttpRequest in POST mode is not working. 
+3. WebSocket and WebRTC are not implemented. 
+4. Server Name Indication check and HTTP/2 support are not implemented. 
