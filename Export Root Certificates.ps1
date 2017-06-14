@@ -1,4 +1,4 @@
-# Get certificates
+# Export root certificates
 $fileFormat = [System.Security.Cryptography.X509Certificates.X509ContentType]::Cert
 $certs = Get-ChildItem -Path cert:\LocalMachine\Root
 # Create export direcroty
