@@ -33,7 +33,7 @@ global.proxyIPs = ["127.0.0.1"];
  */
 global.localCert = null;
 
-//=====Event Handlers=====
+//=====Requests Handlers=====
 //Replace these event handlers to change the behavior of Violentproxy
 /**
  * REQUEST Requests patcher.
@@ -46,7 +46,7 @@ global.localCert = null;
  * @param {integer} id - The unique ID of this request. This can be used to associate later events of the same request. CONNECT request
  ** and its associated REQUEST request counts as two different requests.
  * @param {Function} callback - The function to call when a decision is made, the patcher can be either synchronous or asynchronous.
- ** @param {RequestDecision} result - The decision.
+ ** @param {RequestDecision} result - The decision, refer to global.RequestDecision for more information.
  ** @param {Buffer|string} payload - The patched payload. If you changed it, you are also responsible in updating related headers.
  */
 global.onRequest = (source, destination, payload, headers, id, callback) => {
@@ -56,9 +56,7 @@ global.onRequest = (source, destination, payload, headers, id, callback) => {
     void headers;
     void id;
     //This is just an example
-    callback({
-        result: global.RequestDecision.Allow,
-    }, payload);
+    callback({ result: global.RequestDecision.Allow }, payload);
 };
 /**
  * CONNECT requests patcher. Refer to global.onRequest() for more information.
@@ -71,9 +69,7 @@ global.onConnect = (destination, id, callback) => {
     void destination;
     void id;
     //This is just an example
-    callback({
-        result: global.RequestDecision.Allow,
-    });
+    callback({ result: global.RequestDecision.Allow });
 };
 /**
  * Text responses patcher. Refer to global.onRequest() for more information.
@@ -109,6 +105,12 @@ global.onOtherResponse = (source, destination, data, headers, id, callback) => {
     void id;
     //This is just an example
     callback(data);
+};
+
+//=====WebSocket Handlers=====
+
+global.onWebSocketConnect = () => {
+
 };
 
 //=====Initialization=====
