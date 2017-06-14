@@ -44,7 +44,7 @@ global.localCert = null;
  ** generic handle to beautify this.
  * @param {Header} headers - The headers object as reference, changes to it will be reflected.
  * @param {integer} id - The unique ID of this request. This can be used to associate later events of the same request. CONNECT request
- ** and its associated REQUEST request counts as two different requests.
+ ** and its associated REQUEST or WebSocket request counts as different requests.
  * @param {Function} callback - The function to call when a decision is made, the patcher can be either synchronous or asynchronous.
  ** @param {RequestDecision} result - The decision, refer to global.RequestDecision for more information.
  ** @param {Buffer|string} payload - The patched payload. If you changed it, you are also responsible in updating related headers.

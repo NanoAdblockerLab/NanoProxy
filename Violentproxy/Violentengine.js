@@ -278,8 +278,10 @@ const DynamicServer = class {
             global.log("WARNING", `A client error occured on the dynamic server: ${err.message}`)
             localSocket.destroy();
         });
-        //Bind event handler
+        //Bind event handlers
         this.server.on("request", this.onRequest);
+        this.webSocketServer = new ws.Server({ server: this.server });
+        this.webSocketServer.on("connection", onWebSocketEngine);
         this.server.listen(this.port);
     }
     /**
@@ -432,14 +434,36 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
                 localSocket.resume();
             });
             connection.on("error", (err) => {
-                global.log("ERROR", `An error occured when connecting to dynamic server.`);
+                global.log("ERROR", `An error occured when connecting to dynamic server for encrypted requests handling.`);
                 throw err;
             });
         });
     } else {
-        global.log("WARNING", "Received an invalid CONNECT request: Data sent by user agent is not a TLS handshake.");
-        localSocket.destroy();
+        //Assume to be WebSocket, forward to the main proxy server itself
+        const connection = net.connect(12345, () => {
+            //Pipe the connection over to the server
+            localSocket.pipe(connection);
+            connection.pipe(localSocket);
+            //Send the head that I got before over
+            localSocket.emit("data", localHead);
+            //Resume the socket that I paused before
+            localSocket.resume();
+        });
+        connection.on("error", (err) => {
+            global.log("ERROR", `An error occured when backlooping for WebSocket handling.`);
+            throw err;
+        });
     }
+};
+
+/**
+ * Proxy engine for WebSocket.
+ * @function
+ * @param {boolean} isTLS - Whether or not TLS is used, since this event handler handles both
+ * @param {WebSocket} localSocket - The WebSocket socket from local user agent.
+ */
+const onWebSocketEngine = (isTLS, localSocket) => {
+
 };
 
 /**
@@ -457,6 +481,9 @@ exports.start = (useTLS = false) => {
         server.on("request", requestEngine);
         //Listen to CONNECT requests
         server.on("connect", connectEngine);
+        //Listen to WebSocket requests
+        const webSocketServer = new ws.Server({ server: server });
+        webSocketServer.on("connection", onWebSocketEngine);
         //Handle errors
         server.on("error", (err) => {
             global.log("ERROR", `An error occured on the main proxy server.`);
