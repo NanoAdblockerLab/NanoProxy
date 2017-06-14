@@ -19,5 +19,5 @@ Please open an issue if there is something you want me to know.
 
 ## TODO
 
-1. WebSocket and WebRTC are not implemented. 
-2. Server Name Indication fallback and HTTP/2 support are not implemented. 
+1. WebSocket and WebRTC
+2. Server Name Indication fallback and HTTP/2 support in CONNECT mode
