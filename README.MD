@@ -10,7 +10,7 @@ Violentproxy is not able to proxy request between the local network, it also nee
 It is in very early development, it may or may not start, if you want to try it out: 
 ```Bash
 npm install
-npm debug
+npm run-script debug
 
 curl -x localhost:12345 https://example.com -k
 ```
@@ -20,6 +20,5 @@ Please open an issue if there is something you want me to know.
 ## TODO
 
 1. Test out if Chromium accepts certificate that covers a full public suffix. 
-2. XMLHttpRequest in POST mode is not working. 
-3. WebSocket and WebRTC are not implemented. 
-4. Server Name Indication fallback and HTTP/2 support are not implemented. 
+2. WebSocket and WebRTC are not implemented. 
+3. Server Name Indication fallback and HTTP/2 support are not implemented. 

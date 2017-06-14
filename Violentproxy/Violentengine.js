@@ -59,6 +59,7 @@ let requestEngine = (localReq, localRes) => {
         return;
     }
     //Process options
+    options.method = localReq.method;
     options.headers = localReq.headers;
     options.agent = agent.getAgent(localReq.httpVersion, localReq.headers, options.protocol === "https:");
     options.auth = localReq.auth;
@@ -68,101 +69,117 @@ let requestEngine = (localReq, localRes) => {
         localRes.destroy();
         return;
     }
-    //Patch the request
-    exports.onRequest(localReq.headers["referer"], localReq.url, localReq.headers, (decision) => {
-        //Further process headers so response from remote server can be parsed
-        localReq.headers["accept-encoding"] = "gzip, deflate";
-        switch (decision.result) {
-            case global.RequestDecision.Allow:
-                //Do nothing, process it normally
-                break;
-            case global.RequestDecision.Empty:
-                localRes.writeHead(200, "OK", decision.headers || {
-                    "Content-Type": getType(localReq.headers["accept"]),
-                    "Server": "Apache/2.4.7 (Ubuntu)",
-                });
-                localRes.end();
-                return; //Stop here
-            case global.RequestDecision.Deny:
-                localRes.destroy();
-                return; //Stop here
-            case global.RequestDecision.Redirect:
-                if (decision.redirectLocation === null) {
-                    //Just write back the redirected text
+    //Only POST requests should have payloads, GET can have one but should not
+    //I'll read the payload no matter what, but I'll warn the user if a GET request has a payload
+    let payload = [];
+    localReq.on("data", (chunk) => {
+        payload.push(chunk);
+    });
+    localReq.on("end", () => {
+        payload = Buffer.concat(payload);
+        if (payload.length) {
+            global.log("WARNING", "Received a GET request with a payload.");
+        }
+        //Patch the request
+        exports.onRequest(localReq.headers["referer"], localReq.url, payload, localReq.headers, (decision, payload) => {
+            //Further process headers so response from remote server can be parsed
+            localReq.headers["accept-encoding"] = "gzip, deflate";
+            switch (decision.result) {
+                case global.RequestDecision.Allow:
+                    //Do nothing, process it normally
+                    break;
+                case global.RequestDecision.Empty:
                     localRes.writeHead(200, "OK", decision.headers || {
                         "Content-Type": getType(localReq.headers["accept"]),
                         "Server": "Apache/2.4.7 (Ubuntu)",
                     });
-                    localRes.write(decision.redirectText);
                     localRes.end();
-                    return;
-                } else {
-                    //I expect the patcher to return valid URL
-                    options = url.parse(decision.redirectLocation);
-                    //Copy the rest of the options again
-                    options.headers = localReq.headers;
-                    options.agent = agent.getAgent(localReq.httpVersion, localReq.headers, options.protocol === "https:");
-                    options.auth = localReq.auth;
-                    break;
-                }
-            default:
-                throw new Error(`requestEngine() does not accept ${decision} as a request decision.`);
-        }
-        //Proxy request
-        let request = (options.protocol === "https:" ? https : http).request(options, (remoteRes) => {
-            //remoteRes is http.IncomingMessage, which is also a Stream
-            let data = [];
-            remoteRes.on("data", (chunk) => {
-                data.push(chunk);
-            });
-            remoteRes.on("end", () => {
-                data = Buffer.concat(data);
-                //Check content type, I can only patch text
-                //I'm still able to change the header of non-text response though
-                if (isText(getType(remoteRes.headers["content-type"]))) {
-                    //Check encoding
-                    let encoding = remoteRes.headers["content-encoding"];
-                    if (encoding) {
-                        encoding = encoding.toLowerCase();
-                    }
-                    //So I don't need to encode it again
-                    remoteRes.headers["content-encoding"] = "identity";
-                    if (encoding === "gzip" || encoding === "deflate") {
-                        zlib.unzip(data, (err, result) => {
-                            if (err) {
-                                //Could not parse
-                                global.log("WARNING", `Could not parse server response: ${err.message}`);
-                                localRes.destroy();
-                            } else {
-                                requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, result);
-                            }
+                    return; //Stop here
+                case global.RequestDecision.Deny:
+                    localRes.destroy();
+                    return; //Stop here
+                case global.RequestDecision.Redirect:
+                    if (decision.redirectLocation === null) {
+                        //Just write back the redirected text
+                        localRes.writeHead(200, "OK", decision.headers || {
+                            "Content-Type": getType(localReq.headers["accept"]),
+                            "Server": "Apache/2.4.7 (Ubuntu)",
                         });
+                        localRes.write(decision.redirectText);
+                        localRes.end();
+                        return;
                     } else {
-                        //Assume identity
-                        requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, data);
+                        //I expect the patcher to return valid URL
+                        Object.assign(options, url.parse(decision.redirectLocation));
+                        break;
                     }
-                } else {
-                    //Not text
-                    requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, false, data);
-                }
+                default:
+                    throw new Error(`requestEngine() does not accept ${decision} as a request decision.`);
+            }
+            //Proxy request
+            let request = (options.protocol === "https:" ? https : http).request(options, (remoteRes) => {
+                //remoteRes is http.IncomingMessage, which is also a Stream
+                let data = [];
+                remoteRes.on("data", (chunk) => {
+                    data.push(chunk);
+                });
+                remoteRes.on("end", () => {
+                    data = Buffer.concat(data);
+                    //Check content type, I can only patch text
+                    //I'm still able to change the header of non-text response though
+                    if (isText(getType(remoteRes.headers["content-type"]))) {
+                        //Check encoding
+                        let encoding = remoteRes.headers["content-encoding"];
+                        if (encoding) {
+                            encoding = encoding.toLowerCase();
+                        }
+                        //So I don't need to encode it again
+                        remoteRes.headers["content-encoding"] = "identity";
+                        if (encoding === "gzip" || encoding === "deflate") {
+                            zlib.unzip(data, (err, result) => {
+                                if (err) {
+                                    //Could not parse
+                                    global.log("WARNING", `Could not parse server response: ${err.message}`);
+                                    localRes.destroy();
+                                } else {
+                                    requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, result);
+                                }
+                            });
+                        } else {
+                            //Assume identity
+                            requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, data);
+                        }
+                    } else {
+                        //Not text
+                        requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, false, data);
+                    }
+                });
+                remoteRes.on("error", (err) => {
+                    //Something went wrong
+                    global.log("WARNING", `Could not connect to remote server: ${err.message}`);
+                    localRes.destroy();
+                });
+                remoteRes.on("aborted", () => {
+                    //Remote server disconnected prematurely, drop the local connection
+                    localRes.destroy();
+                });
             });
-            remoteRes.on("error", (err) => {
-                //Something went wrong
+            request.on("error", (err) => {
                 global.log("WARNING", `Could not connect to remote server: ${err.message}`);
                 localRes.destroy();
             });
-            remoteRes.on("aborted", () => {
-                //Remote server disconnected prematurely, drop the local connection
-                localRes.destroy();
-            });
+            //Forward on patched POST payload
+            if (payload) {
+                request.write(payload);
+            }
+            request.end();
+            //Abort request when local client disconnects
+            localReq.on("aborted", () => { request.abort(); });
         });
-        request.on("error", (err) => {
-            global.log("WARNING", `Could not connect to remote server: ${err.message}`);
-            localRes.destroy();
-        });
-        request.end();
-        //Abort request when local client disconnects
-        localReq.on("aborted", () => { request.abort(); });
+    });
+    localReq.on("error", (err) => {
+        global.log("WARNING", `Local connection failed: ${err.message}`);
+        localRes.destroy();
     });
 };
 /**
@@ -441,11 +458,14 @@ exports.start = (useTLS = false) => {
  * @var {Function}
  * @param {string} source - The referer URL, if exist. Undefined will be passed if it doesn't exist.
  * @param {string} destination - The requested URL.
+ * @param {Buffer} payload - The raw POST request payload, since I can't make assumptions on what the server likes, I cannot have
+ ** generic handle to beautify this.
  * @param {Header} headers - The headers object as reference, changes to it will be reflected.
  * @param {Function} callback - The function to call when a decision is made, the patcher can be either synchronous or asynchronous.
  ** @param {RequestDecision} result - The decision.
+ ** @param {Buffer|string} payload - The patched payload. If you changed it, you are also responsible in updating related headers.
  */
-exports.onRequest = (source, destination, headers, callback) => {
+exports.onRequest = (source, destination, payload, headers, callback) => {
     //These parameters are not used
     void source;
     void destination;
@@ -453,7 +473,7 @@ exports.onRequest = (source, destination, headers, callback) => {
     //This is just an example
     callback({
         result: global.RequestDecision.Allow,
-    });
+    }, payload);
 };
 /**
  * CONNECT requests patcher.
