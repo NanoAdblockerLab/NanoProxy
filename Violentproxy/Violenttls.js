@@ -32,7 +32,7 @@ global.localCert = {};
 /**
  * Server certificates cache.
  * Will be a dictionary of cache key to certificate. The certificate object can be passed directly to https.createServer().
- * A cache key must be like "*.example.com", the wildcard is required.
+ * A cache key must be like "+.example.com", the "+" symbol is a wildcard, and it is required.
  * @var {Dictionary.<Cert>}
  */
 let certCache = {};
@@ -53,6 +53,7 @@ const Cert = class {
     }
     /**
      * Set this certificate, this will also mark it as ready and trigger callbacks.
+     * This function should only be called once.
      * @method
      * @param {Certificate} val - The certificate.
      */
@@ -295,7 +296,7 @@ const genCA = (callback) => {
         //Save the root certificate to files
         let done = 0;
         const onDone = () => {
-            global.log("NOTICE", "Certificate authority root certificate generated, don't forget to install it.");
+            global.log("NOTICE", "Certificate authority root certificate is generated, don't forget to install it.");
             global.log("NOTICE", `The certificate is located at ${certFolder}/Violentca.crt`);
             callback();
         };
@@ -348,7 +349,7 @@ const loadCA = (callback) => {
  * @param {Function} callback - The function to call when it is done.
  */
 const genCert = (domains, ips, cacheKey, callback) => {
-    const path = `${certFolder}/${cacheKey.replace("*", "+")}`;
+    const path = `${certFolder}/${cacheKey}`;
     global.log("INFO", `Generating server certificate for ${cacheKey}...`);
     //Server certificate lasts 2 year, because Chromium will soon start to reject certificates that lasts too long
     let startDate = new Date();
@@ -357,7 +358,7 @@ const genCert = (domains, ips, cacheKey, callback) => {
     endDate.setFullYear(endDate.getFullYear() + 2);
     forge.pki.rsa.generateKeyPair({ bits: 2048 }, (err, keypair) => {
         if (err) {
-            global.log("ERROR", `Could not create RSA key pair for server certificate for ${cacheKey}.`);
+            global.log("ERROR", `Could not create RSA key pair for the server certificate for ${cacheKey}.`);
             throw err;
         }
         let serverCert = forge.pki.createCertificate();
@@ -387,15 +388,11 @@ const genCert = (domains, ips, cacheKey, callback) => {
                 (++done === 3) && onDone();
             }
         };
-        fs.mkdir(path, (err) => {
-            if (err) {
-                global.log("ERROR", `Could not save server certificate for ${cacheKey}.`);
-                throw err;
-            } else {
-                fs.writeFile(`${path}/Violentcert.crt`, cert, onTick);
-                fs.writeFile(`${path}/Violentcert.public`, forge.pki.publicKeyToPem(keypair.publicKey), onTick);
-                fs.writeFile(`${path}/Violentcert.private`, key, onTick);
-            }
+        fs.mkdir(path, () => {
+            //Ignore error since the directory may already exist, I'll overwrite the content in that case
+            fs.writeFile(`${path}/Violentcert.crt`, cert, onTick);
+            fs.writeFile(`${path}/Violentcert.public`, forge.pki.publicKeyToPem(keypair.publicKey), onTick);
+            fs.writeFile(`${path}/Violentcert.private`, key, onTick);
         });
     });
 };
@@ -409,7 +406,7 @@ const genCert = (domains, ips, cacheKey, callback) => {
  */
 const loadCert = (cacheKey, callback) => {
     //Convert domainKey to file name, the assumption below is safe
-    const path = `${certFolder}/${cacheKey.replace("*", "+")}`;
+    const path = `${certFolder}/${cacheKey}`;
     //Read the files, this is different than loading root certificate, since https.createServer expects
     //PEM format and it doesn't need the public key
     fs.readFile(`${path}/Violentcert.crt`, (err, cert) => {
@@ -435,46 +432,51 @@ const loadCert = (cacheKey, callback) => {
  * Get a subdomain while considering public suffix.
  * @function
  * @param {string} host - The raw host name.
- * @return {string} The subdomain domain, or null if host is a raw IP.
+ * @return {string|null} The subdomain, or null if host is a raw IP.
  */
-const toDomain = (host) => {
-    //Check for local address
-    if (!host.includes(".")) {
-        return host;
-    }
-    //Check for IPv6
-    if (host.includes(":")) {
-        //Port number should be already removed, if it still has ":", then it's an IPv6 address
-        return null;
-    }
-    //Check for IPv4
-    let dots = 0, index;
-    index = host.indexOf(".");
-    while (index > -1) {
-        dots++;
-        if (dots > 3) {
-            break;
+const toDomain = (() => {
+    //Precompile RegExp
+    const isIPv4 = /^[\d\.]+$/;
+    //Return closure function
+    return (host) => {
+        //Check for IPv6
+        if (host.includes(":")) {
+            //Port number should be already removed, if it still has ":", then it's an IPv6 address
+            return null;
         }
-        index = host.indexOf(".", index);
-    }
-    if (dots === 3 && (/^[\d\.]+$/).test(host)) {
-        //Composed of only digits and dot, and has 3 dots, this is IPv4 address
-        return null;
-    }
-    //Check for public siffix, Node should have already converted the domain to punycode
-    const domain = global.publicsuffix.getDomain(host);
-    //The host is a public suffix itself, this shouldn't happen, defaults to localhost
-    if (!domain) {
-        return "localhost";
-    }
-    //Check if host is domain itself
-    if (domain === host) {
-        return host;
-    }
-    //Remove the first subdomain
-    index = host.indexOf(".");
-    return host.substring(index + 1);
-};
+        //Check for local address
+        if (!host.includes(".")) {
+            return host;
+        }
+        //Check for IPv4
+        let dots = 0, index;
+        index = host.indexOf(".");
+        while (index > -1) {
+            dots++;
+            if (dots > 3) {
+                break;
+            }
+            index = host.indexOf(".", index);
+        }
+        if (dots === 3 && isIPv4.test(host)) {
+            //Composed of only digits and dot, and has 3 dots, this is an IPv4 address
+            return null;
+        }
+        //Check for public siffix, Node.js should have already converted the domain to punycode
+        const domain = global.publicsuffix.getDomain(host);
+        //The host is a public suffix itself, this shouldn't happen, defaults to localhost
+        if (!domain) {
+            return "localhost";
+        }
+        //Check if host is domain itself
+        if (domain === host) {
+            return host;
+        }
+        //Remove the first subdomain
+        index = host.indexOf(".");
+        return host.substring(index + 1);
+    };
+})();
 
 /**
  * Initialize certificate authority, don't call sign() before receiving callback from this function.
@@ -548,8 +550,9 @@ exports.sign = (domain, callback) => {
     //Cache key for local address will be local address itself
     let cacheKey
     if (parsedDomain !== null && parsedDomain.includes(".")) {
-        cacheKey = `*.${parsedDomain}`;
+        cacheKey = `+.${parsedDomain}`;
     } else {
+        //Local address
         cacheKey = parsedDomain;
     }
     let domainsToSign = [];
@@ -558,13 +561,13 @@ exports.sign = (domain, callback) => {
         //Raw IP
         IPsToSign.push(domain);
     } else {
-        if (cacheKey[0] === "*") {
+        if (cacheKey[0] === "+") {
             domainsToSign.push(parsedDomain, cacheKey);
         } else {
             domainsToSign.push(parsedDomain);
         }
     }
-    //Check if I already gave the certificate
+    //Check if I already have the certificate
     if (!certCache[cacheKey]) {
         certCache[cacheKey] = new Cert();
         //Try to load certificates from files
