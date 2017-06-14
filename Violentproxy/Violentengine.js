@@ -14,26 +14,45 @@ const { agent, zlib, tls } = global;
 
 /**
  * Get MIME type from header.
- * @param {string} str - The encoding related header entry.
+ * @function
+ * @param {string} [str=""] - The encoding related header entry.
  * @param {string} [def="text/html"] - The default value.
+ * @param {boolean} [noWildcard=false] - Whether or not wildcard is allowed.
+ * @return {string} A MIME type.
  */
-const getType = (str = "", def = "text/html") => {
+const getType = (str = "", def = "text/html", noWildcard) => {
+    let bestGuess;
     const parts = str.split(/,|;/);
+    //Try to find the first precise type, assuming the header is ordered by preference
     for (let i = 0; i < parts.length; i++) {
-        if (!parts[i].includes("*") && parts[i].includes("/")) {
-            return parts[i].trim();
+        let entry = parts[i].trim();
+        if (!bestGuess && entry === "*/*") {
+            bestGuess = entry;
+        } else if (entry.endsWith("/*") && (!bestGuess || bestGuess === "*/*")) {
+            bestGuess = entry;
+        } else if (entry.includes("/") && !entry.includes("*")) {
+            //Found best entry
+            bestGuess = entry;
+            break;
         }
+        //Not a valid MIME type otherwise
     }
-    return def;
+    if (!bestGuess || (noWildcard && bestGuess.includes("*"))) {
+        return def;
+    } else {
+        return bestGuess;
+    }
 };
 /**
  * Check if given MIME type is text.
  * https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Complete_list_of_MIME_types
+ * @function
  * @param {string} mimeType - The MIME type to check.
+ * @return {boolean} True if the given MIME type is text, false otherwise.
  */
 const isText = (mimeType) => {
     if (!mimeType) {
-        //Assume not text if the server didn't send over the content type
+        //Assume not text
         return false;
     } else {
         return mimeType.startsWith("text/") || mimeType.endsWith("/xhtml+xml") || mimeType.endsWith("/xml");
@@ -61,10 +80,11 @@ let requestEngine = (localReq, localRes) => {
     //Process options
     options.method = localReq.method;
     options.headers = localReq.headers;
-    options.agent = agent.getAgent(localReq.httpVersion, localReq.headers, options.protocol === "https:");
     options.auth = localReq.auth;
+    options.agent = agent.getAgent(localReq.httpVersion, localReq.headers, options.protocol === "https:");
     //Check for host
     if (!localReq.url || localReq.url[0] === "/") {
+        //Use another port if special callbacks from the web page is needed
         global.log("WARNING", "Received an invalid REQUEST request: No host give.");
         localRes.destroy();
         return;
@@ -90,7 +110,7 @@ let requestEngine = (localReq, localRes) => {
                     break;
                 case global.RequestDecision.Empty:
                     localRes.writeHead(200, "OK", decision.headers || {
-                        "Content-Type": getType(localReq.headers["accept"]),
+                        "Content-Type": getType(localReq.headers["accept"], undefined, true),
                         "Server": "Apache/2.4.7 (Ubuntu)",
                     });
                     localRes.end();
@@ -102,7 +122,7 @@ let requestEngine = (localReq, localRes) => {
                     if (decision.redirectLocation === null) {
                         //Just write back the redirected text
                         localRes.writeHead(200, "OK", decision.headers || {
-                            "Content-Type": getType(localReq.headers["accept"]),
+                            "Content-Type": getType(localReq.headers["accept"], undefined, true),
                             "Server": "Apache/2.4.7 (Ubuntu)",
                         });
                         localRes.write(decision.redirectText);
@@ -127,6 +147,7 @@ let requestEngine = (localReq, localRes) => {
                     data = Buffer.concat(data);
                     //Check content type, I can only patch text
                     //I'm still able to change the header of non-text response though
+                    //I can also completely replace the content no matter what it is, but that should be done by request patcher
                     if (isText(getType(remoteRes.headers["content-type"]))) {
                         //Check encoding
                         let encoding = remoteRes.headers["content-encoding"];
@@ -134,6 +155,7 @@ let requestEngine = (localReq, localRes) => {
                             encoding = encoding.toLowerCase();
                         }
                         //So I don't need to encode it again
+                        //Response patcher can encode it again and change this header if needed
                         remoteRes.headers["content-encoding"] = "identity";
                         if (encoding === "gzip" || encoding === "deflate") {
                             zlib.unzip(data, (err, result) => {
@@ -169,9 +191,7 @@ let requestEngine = (localReq, localRes) => {
                 localRes.destroy();
             });
             //Forward on patched POST payload
-            if (payload) {
-                request.write(payload);
-            }
+            request.write(payload);
             request.end();
             //Abort request when local client disconnects
             localReq.on("aborted", () => { request.abort(); });
@@ -195,9 +215,10 @@ let requestEngine = (localReq, localRes) => {
 requestEngine.finalize = (localRes, remoteRes, referer, url, isText, responseData) => {
     const onDone = () => {
         //Update content length
-        remoteRes.headers["content-length"] = responseData.length;
+        remoteRes.headers["content-length"] = Buffer.byteLength(responseData);
         //Prevent public key pinning
         delete remoteRes.headers["Public-Key-Pins"];
+        //Send response to user agent
         localRes.writeHead(remoteRes.statusCode, remoteRes.statusMessage, remoteRes.headers);
         localRes.write(responseData);
         localRes.end();
@@ -239,7 +260,8 @@ const DynamicServer = class {
         this.server = https.createServer({});
         //Handle error
         this.server.on("error", (err) => {
-            global.log("ERROR", `An error occured on the dynamic server: ${err.message}`);
+            global.log("ERROR", `An error occured on the dynamic server.`);
+            throw err;
         });
         this.server.on("clientError", (err, localSocket) => {
             global.log("WARNING", `A client error occured on the dynamic server: ${err.message}`)
@@ -422,7 +444,8 @@ exports.start = (useTLS = false) => {
         server.on("connect", connectEngine);
         //Handle errors
         server.on("error", (err) => {
-            global.log("ERROR", `An error occured on the main proxy server: ${err.message}`);
+            global.log("ERROR", `An error occured on the main proxy server.`);
+            throw err;
         });
         server.on("clientError", (err, socket) => {
             global.log("WARNING", `A client error occurred on the main proxy server: ${err.message}`);

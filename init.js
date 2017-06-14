@@ -66,6 +66,7 @@ global.RequestDecision = {
      * the resource is redirected easily, a certificate for the originally requested host will be signed and used.
      * Note that the user agent can still figure it out from unexpected headers, use response patcher to fix the
      * headers if needed.
+     * Response patchers will not be triggered if redirecting to local resource.
      * This is only allowed in REQUEST requests patcher.
      * Pass in these extra fields when needed:
      * @param {string} redirectLocation - The location to redirect, pass null for redirecting to a local resource, this
