@@ -1,6 +1,7 @@
 //Initialization script, load and initialize all modules, all global variables are defined here
 "use strict";
 
+//=====Configuration=====
 /**
  * Log level configuration.
  * 0: Complete silence, not recommended.
@@ -31,6 +32,8 @@ global.proxyIPs = ["127.0.0.1"];
  * @const {Certificate}
  */
 global.localCert = null;
+
+//=====Event Handlers=====
 /**
  * Possible request decisions from request patcher.
  * The default headers look like this:
@@ -84,7 +87,83 @@ global.RequestDecision = {
      */
     Pipe: 5,
 };
+/**
+ * REQUEST Requests patcher.
+ * @var {Function}
+ * @param {string} source - The referer URL, if exist. Undefined will be passed if it doesn't exist.
+ * @param {string} destination - The requested URL.
+ * @param {Buffer} payload - The raw POST request payload, since I can't make assumptions on what the server likes, I cannot have
+ ** generic handle to beautify this.
+ * @param {Header} headers - The headers object as reference, changes to it will be reflected.
+ * @param {integer} id - The unique ID of this request. This can be used to associate later events of the same request. CONNECT request
+ ** and its associated REQUEST request counts as two different requests.
+ * @param {Function} callback - The function to call when a decision is made, the patcher can be either synchronous or asynchronous.
+ ** @param {RequestDecision} result - The decision.
+ ** @param {Buffer|string} payload - The patched payload. If you changed it, you are also responsible in updating related headers.
+ */
+global.onRequest = (source, destination, payload, headers, id, callback) => {
+    //These parameters are not used
+    void source;
+    void destination;
+    void headers;
+    void id;
+    //This is just an example
+    callback({
+        result: global.RequestDecision.Allow,
+    }, payload);
+};
+/**
+ * CONNECT requests patcher. Refer to exports.onRequest() for more information.
+ * @var {Function}
+ * @param {string} destination - The destination host and port.
+ * @param {Function} callback - Refer to exports.onRequest() for more information.
+ */
+global.onConnect = (destination, id, callback) => {
+    //These parameters are not used
+    void destination;
+    void id;
+    //This is just an example
+    callback({
+        result: global.RequestDecision.Allow,
+    });
+};
+/**
+ * Text responses patcher. Refer to exports.onRequest() for more information.
+ * @var {Function}
+ * @param {string} text - The response text.
+ * @param {Function} callback - Refer back to exports.onRequest() for more information.
+ ** @param {string} patchedText - The patched response text, if apply.
+ */
+global.onTextResponse = (() => {
+    //Precompile RegExp
+    const headMatcher = /(<head[^>]*>)/i;
+    //Return closure function
+    return (source, destination, text, headers, id, callback) => {
+        //These parameters are not used
+        void source;
+        void destination;
+        void headers;
+        void id;
+        //This is just an example
+        callback(text.replace(headMatcher, `$1<script>console.log("Hello from Violentproxy :)")</script>`));
+    };
+})();
+/**
+ * Other responses (everything except text) patcher. Refer to exports.onRequest() and exports.onTestResponse() for more information.
+ * @var {Function}
+ * @param {Buffer} data - The response data. It could be still encoded, don't change it unless you plan to replace it.
+ */
+global.onOtherResponse = (source, destination, data, headers, id, callback) => {
+    //These parameters are not used
+    void source;
+    void destination;
+    void headers;
+    void id;
+    //This is just an example
+    callback(data);
+};
 
+//=====Initialization=====
 /**
  * Log controller, always use this function instead of console.log().
  * @function
@@ -113,7 +192,6 @@ global.log = (type, ...data) => {
         console.log(...data);
     }
 };
-
 //Packages are loaded to global scope so my modules can share them
 global.log("INFO", "Loading modules...");
 //Network utilities
@@ -133,7 +211,6 @@ global.agent = require("./Violentproxy/Violentagent");
 global.tls = require("./Violentproxy/Violenttls");
 //Load main code
 global.engine = require("./Violentproxy/Violentengine");
-
 //Initialize public suffix list
 global.publicsuffix.parse(
     global.fs.readFileSync("./Pulic Suffix/public_suffix_list.dat.txt", "utf8"),
