@@ -106,7 +106,7 @@ let requestEngine = (localReq, localRes) => {
             localReq.headers["accept-encoding"] = "gzip, deflate";
             switch (decision.result) {
                 case global.RequestDecision.Allow:
-                    //Do nothing, process it normally
+                    //Do nothing here, process it normally
                     break;
                 case global.RequestDecision.Empty:
                     localRes.writeHead(200, "OK", decision.headers || {
@@ -299,7 +299,7 @@ const DynamicServer = class {
      * @param {ServerResponse} localRes - The local response object.
      */
     onRequest(localReq, localRes) {
-        //Fill in the full URL and send off to request engine.
+        //Fill in the full URL and send off to request engine
         localReq.url = "https://" + localReq.headers["host"] + localReq.url;
         requestEngine(localReq, localRes);
     }
@@ -308,85 +308,88 @@ const DynamicServer = class {
  * Proxy engine for CONNECT requests.
  * @function
  * @param {IncomingMessage} localReq - The local request object.
- * @param {Socket} localSocket - The local socket, the user agent will ask me to connect this to a socket of the remote server,
- ** but I will connect it to a local server instead.
+ * @param {Socket} localSocket - The local socket, the user agent will ask me to connect this to a socket of the remote server.
  * @param {Buffer} localHead - The begining of message, this may or may not be present.
  */
-let connectEngine = (localReq, localSocket, localHead) => {
-    //If I think it's OK to give up control over the communication, I can pipe the request over like the example here:
-    //https://newspaint.wordpress.com/2012/11/05/node-js-http-and-https-proxy/
-    global.log("INFO", `Received a CONNECT request: ${localReq.url}`);
-    //Parse request, expects something like example.com:443, but need to take in account of IPv6
-    let parts = localReq.url.split(":");
-    let port = 443;
-    if ((/^\d+$/).test(parts[parts.length - 1])) {
-        //Last part is all digits, it's a port number
-        port = parseInt(parts.pop());
-        if (port < 0 || port > 65535) {
-            port = 443;
-        }
-    }
-    //The rest is host
-    const host = parts.join(":");
-    localSocket.pause();
-    //See what I need to do
-    exports.onConnect(`${host}:${port}`, (decision) => {
-        switch (decision.result) {
-            case global.RequestDecision.Allow:
-                //Do nothing, process it normally
-                break;
-            case global.RequestDecision.Deny:
-                localSocket.destroy();
-                return; //Stop here
-            case global.RequestDecision.Pipe:
-                const connection = net.connect(port, host, () => {
-                    //Pipe the connection over to the server
-                    localSocket.pipe(connection);
-                    connection.pipe(localSocket);
-                    //Send the head that I got before over
-                    localSocket.emit("data", localHead);
-                    //Resume the socket that I paused before
-                    localSocket.resume();
-                });
-                return;
-            default:
-                throw new Error(`connectEngine() does not accept ${decision} as a request decision.`);
-        }
-        //Since SSLv2 is now prohibited and Chromium is already rejecting SSLv3 connections, in 2017, I can safely assume only TLS is used
-        //https://tools.ietf.org/html/rfc6176
-        //I need 3 bytes of data to distinguish a TLS handshake from plain text
-        if (localHead && localHead.length >= 3) {
-            connectEngine.onHandshake(localReq, localSocket, localHead, host, port);
-        } else {
-            let data = localHead;
-            const handler = () => {
-                localSocket.once("data", (incomingData) => {
-                    data = Buffer.concat([data, incomingData]);
-                    if (data.length < 3) {
-                        handler();
-                    } else {
-                        connectEngine.onHandshake(localReq, localSocket, data, host, port);
-                    }
-                });
-            };
-            handler();
-            //Now I need to tell the user agent to send over the data
-            //Line break is \r\n regardless of platform
-            //https://stackoverflow.com/questions/5757290/http-header-line-break-style
-            localSocket.write(`HTTP/${localReq.httpVersion} 200 Connection Established\r\n`); //Maybe I should hard code this as HTTP/1.1
-            if (localReq.headers["connection"] === "keep-alive") {
-                localSocket.write("Connection: keep-alive\r\n");
+let connectEngine = (() => {
+    //Precompile RegExp
+    const isInteger = /^\d+$/;
+    //Return clusure function
+    return (localReq, localSocket, localHead) => {
+        global.log("INFO", `Received a CONNECT request: ${localReq.url}`);
+        //Parse request, expects something like example.com:443, but need to take in account of IPv6
+        let parts = localReq.url.split(":");
+        let port = 443;
+        if (isInteger.test(parts[parts.length - 1])) {
+            //Last part is all digits, it's a port number
+            port = parseInt(parts.pop());
+            if (port < 0 || port > 65535) {
+                port = 443;
             }
-            if (localReq.headers["proxy-connection"] === "keep-alive") {
-                localSocket.write("Proxy-Connection: keep-alive\r\n");
-            }
-            //Write an emply line to signal the user agent that HTTP header has ended
-            localSocket.write("\r\n");
-            //Resume the socket so I can receive the handshake
-            localSocket.resume();
         }
-    });
-};
+        //The rest is host
+        const host = parts.join(":");
+        localSocket.pause();
+        //See what I need to do
+        exports.onConnect(`${host}:${port}`, (decision) => {
+            switch (decision.result) {
+                case global.RequestDecision.Allow:
+                    //Do nothing here, process it normally
+                    break;
+                case global.RequestDecision.Deny:
+                    localSocket.destroy();
+                    return; //Stop here
+                case global.RequestDecision.Pipe:
+                    const connection = net.connect(port, host, () => {
+                        //Pipe the connection over to the server
+                        localSocket.pipe(connection);
+                        connection.pipe(localSocket);
+                        //Send the head that I got before over
+                        localSocket.emit("data", localHead);
+                        //Resume the socket that I paused before
+                        localSocket.resume();
+                    });
+                    return; //Stop here
+                default:
+                    throw new Error(`connectEngine() does not accept ${decision} as a request decision.`);
+            }
+            //Since SSLv2 is now prohibited and Chromium is already rejecting SSLv3 connections, in 2017, I can safely assume only TLS is used
+            //https://tools.ietf.org/html/rfc6176
+            //I need 3 bytes of data to distinguish a TLS handshake from plain text
+            if (localHead && localHead.length >= 3) {
+                connectEngine.onHandshake(localReq, localSocket, localHead, host, port);
+            } else {
+                let data = localHead;
+                const handler = () => {
+                    localSocket.once("data", (incomingData) => {
+                        data = Buffer.concat([data, incomingData]);
+                        if (data.length < 3) {
+                            handler();
+                        } else {
+                            localSocket.pause();
+                            connectEngine.onHandshake(localReq, localSocket, data, host, port);
+                        }
+                    });
+                };
+                handler();
+                //Now I need to tell the user agent to send over the data
+                //Line break is \r\n regardless of platform
+                //https://stackoverflow.com/questions/5757290/http-header-line-break-style
+                localSocket.write(`HTTP/${localReq.httpVersion} 200 Connection Established\r\n`); //Maybe I should hard code this as HTTP/1.1
+                if (localReq.headers["connection"] === "keep-alive") {
+                    localSocket.write("Connection: keep-alive\r\n");
+                }
+                if (localReq.headers["proxy-connection"] === "keep-alive") {
+                    localSocket.write("Proxy-Connection: keep-alive\r\n");
+                }
+                //Write an emply line to signal the user agent that HTTP header has ended
+                localSocket.write("\r\n");
+                //Resume the socket so I can receive the handshake
+                localSocket.resume();
+            }
+        });
+    };
+})();
 /**
  * Detect TLS handshake from incoming data.
  * http://blog.bjrn.se/2012/07/fun-with-tls-handshake.html
@@ -417,8 +420,8 @@ connectEngine.onHandshake = (localReq, localSocket, localHead, host, port) => {
                 localSocket.resume();
             });
             connection.on("error", (err) => {
-                global.log("WARNING", `An error occured when connecting to dynamic server: ${err.message}`);
-                localSocket.destroy();
+                global.log("ERROR", `An error occured when connecting to dynamic server.`);
+                throw err;
             });
         });
     } else {
@@ -498,7 +501,7 @@ exports.onRequest = (source, destination, payload, headers, callback) => {
     }, payload);
 };
 /**
- * CONNECT requests patcher.
+ * CONNECT requests patcher. Refer to exports.onRequest() for more information.
  * @var {Function}
  * @param {string} destination - The destination host and port.
  * @param {Function} callback - Refer to exports.onRequest() for more information.
@@ -512,22 +515,27 @@ exports.onConnect = (destination, callback) => {
     });
 };
 /**
- * Text responses patcher. Refer back to exports.onRequest() for more information.
+ * Text responses patcher. Refer to exports.onRequest() for more information.
  * @var {Function}
  * @param {string} text - The response text.
  * @param {Function} callback - Refer back to exports.onRequest() for more information.
  ** @param {string} patchedText - The patched response text, if apply.
  */
-exports.onTextResponse = (source, destination, text, headers, callback) => {
-    //These parameters are not used
-    void source;
-    void destination;
-    void headers;
-    //This is just an example
-    callback(text.replace(/(<head[^>]*>)/i, "$1" + `<script>console.log("Hello from Violentproxy :)");</script>`));
-};
+exports.onTextResponse = (() => {
+    //Precompile RegExp
+    const headMatcher = /(<head[^>]*>)/i;
+    //Return closure function
+    return (source, destination, text, headers, callback) => {
+        //These parameters are not used
+        void source;
+        void destination;
+        void headers;
+        //This is just an example
+        callback(text.replace(headMatcher, `$1<script>console.log("Hello from Violentproxy :)")</script>`));
+    };
+})();
 /**
- * Other responses (everything except text) patcher. Refer back to exports.onRequest() and exports.onTestResponse() for more information.
+ * Other responses (everything except text) patcher. Refer to exports.onRequest() and exports.onTestResponse() for more information.
  * @var {Function}
  * @param {Buffer} data - The response data. It could be still encoded, don't change it unless you plan to replace it.
  */
