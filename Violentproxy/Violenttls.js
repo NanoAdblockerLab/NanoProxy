@@ -432,6 +432,51 @@ const loadCert = (cacheKey, callback) => {
 };
 
 /**
+ * Get a subdomain while considering public suffix.
+ * @function
+ * @param {string} host - The raw host name.
+ * @return {string} The subdomain domain, or null if host is a raw IP.
+ */
+const toDomain = (host) => {
+    //Check for local address
+    if (!host.includes(".")) {
+        return host;
+    }
+    //Check for IPv6
+    if (host.includes(":")) {
+        //Port number should be already removed, if it still has ":", then it's an IPv6 address
+        return null;
+    }
+    //Check for IPv4
+    let dots = 0, index;
+    index = host.indexOf(".");
+    while (index > -1) {
+        dots++;
+        if (dots > 3) {
+            break;
+        }
+        index = host.indexOf(".", index);
+    }
+    if (dots === 3 && (/^[\d\.]+$/).test(host)) {
+        //Composed of only digits and dot, and has 3 dots, this is IPv4 address
+        return null;
+    }
+    //Check for public siffix, Node should have already converted the domain to punycode
+    const domain = global.publicsuffix.getDomain(host);
+    //The host is a public suffix itself, this shouldn't happen, defaults to localhost
+    if (!domain) {
+        return "localhost";
+    }
+    //Check if host is domain itself
+    if (domain === host) {
+        return host;
+    }
+    //Remove the first subdomain
+    index = host.indexOf(".");
+    return host.substring(index + 1);
+};
+
+/**
  * Initialize certificate authority, don't call sign() before receiving callback from this function.
  * @function
  * @param {Funciton} callback - The function to call when Violenttls is ready.
@@ -499,23 +544,25 @@ exports.init = (callback) => {
  ** @param {Certificate} - An object that can be directly passed to https.createServer().
  */
 exports.sign = (domain, callback) => {
-    let cacheKey;
-    let domainsToSign;
-    //I need to count how many dots there are, RegExp would not be faster as it will create an array anyway
-    let parts = domain.split(".");
-    if (parts.length < 2) {
-        //Assume local address
-        cacheKey = domain;
-        domainsToSign = [domain];
-    } else if (parts.length === 2) {
-        //Domain is like "example.com", since I can't sign `*.com`, I will sign "example.com" and "*.example.com"
-        cacheKey = `*.${domain}`;
-        domainsToSign = [domain, cacheKey];
+    let parsedDomain = toDomain(domain);
+    //Cache key for local address will be local address itself
+    let cacheKey
+    if (parsedDomain !== null && parsedDomain.includes(".")) {
+        cacheKey = `*.${parsedDomain}`;
     } else {
-        //Make the first part to be a wild card
-        parts[0] = "*";
-        cacheKey = parts.join(".");
-        domainsToSign = [domain, cacheKey];
+        cacheKey = parsedDomain;
+    }
+    let domainsToSign = [];
+    let IPsToSign = [];
+    if (parsedDomain === null) {
+        //Raw IP
+        IPsToSign.push(domain);
+    } else {
+        if (cacheKey[0] === "*") {
+            domainsToSign.push(parsedDomain, cacheKey);
+        } else {
+            domainsToSign.push(parsedDomain);
+        }
     }
     //Check if I already gave the certificate
     if (!certCache[cacheKey]) {
@@ -529,7 +576,7 @@ exports.sign = (domain, callback) => {
                 line.setMonth(line.getMonth() + 2);
                 if (line > forge.pki.certificateFromPem(certCache[cacheKey].value.cert).validity.notAfter) {
                     //Generate a new one
-                    genCert(domainsToSign, [], cacheKey, () => {
+                    genCert(domainsToSign, IPsToSign, cacheKey, () => {
                         callback(certCache[cacheKey].value);
                     });
                 } else {
@@ -538,7 +585,7 @@ exports.sign = (domain, callback) => {
                 }
             } else {
                 //Generate a new one
-                genCert(domainsToSign, [], cacheKey, () => {
+                genCert(domainsToSign, IPsToSign, cacheKey, () => {
                     callback(certCache[cacheKey].value);
                 });
             }

@@ -64,7 +64,7 @@ let requestEngine = (localReq, localRes) => {
     options.agent = agent.getAgent(localReq.httpVersion, localReq.headers, options.protocol === "https:");
     options.auth = localReq.auth;
     //Check for host
-    if (localReq.url[0] === "/") {
+    if (!localReq.url || localReq.url[0] === "/") {
         global.log("WARNING", "Received an invalid REQUEST request: No host give.");
         localRes.destroy();
         return;
@@ -77,7 +77,7 @@ let requestEngine = (localReq, localRes) => {
     });
     localReq.on("end", () => {
         payload = Buffer.concat(payload);
-        if (payload.length) {
+        if (options.method === "GET" && payload.length) {
             global.log("WARNING", "Received a GET request with a payload.");
         }
         //Patch the request
@@ -282,7 +282,6 @@ const DynamicServer = class {
         requestEngine(localReq, localRes);
     }
 };
-
 /**
  * Proxy engine for CONNECT requests.
  * @function
@@ -295,18 +294,18 @@ let connectEngine = (localReq, localSocket, localHead) => {
     //If I think it's OK to give up control over the communication, I can pipe the request over like the example here:
     //https://newspaint.wordpress.com/2012/11/05/node-js-http-and-https-proxy/
     global.log("INFO", `Received a CONNECT request: ${localReq.url}`);
-    //Parse request
-    let [host, port, ...rest] = localReq.url.split(":"); //Expected to be something like example.com:443
-    if (rest.length > 0 || !host || host.includes("*") || !host.includes(".")) {
-        global.log("WARNING", `Received an invalid CONNECT request: Request URL is malformed.`);
-        localSocket.destroy();
-        return;
+    //Parse request, expects something like example.com:443, but need to take in account of IPv6
+    let parts = localReq.url.split(":");
+    let port = 443;
+    if ((/^\d+$/).test(parts[parts.length - 1])) {
+        //Last part is all digits, it's a port number
+        port = parseInt(parts.pop());
+        if (port < 0 || port > 65535) {
+            port = 443;
+        }
     }
-    port = parseInt(port);
-    if (isNaN(port) || port < 0 || port > 65535) {
-        //Defaults to port 443
-        port = 443;
-    }
+    //The rest is host
+    const host = parts.join(":");
     localSocket.pause();
     //See what I need to do
     exports.onConnect(`${host}:${port}`, (decision) => {

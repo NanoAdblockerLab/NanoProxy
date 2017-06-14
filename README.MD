@@ -19,6 +19,5 @@ Please open an issue if there is something you want me to know.
 
 ## TODO
 
-1. Test out if Chromium accepts certificate that covers a full public suffix. 
-2. WebSocket and WebRTC are not implemented. 
-3. Server Name Indication fallback and HTTP/2 support are not implemented. 
+1. WebSocket and WebRTC are not implemented. 
+2. Server Name Indication fallback and HTTP/2 support are not implemented. 

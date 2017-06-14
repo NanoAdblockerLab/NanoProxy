@@ -121,31 +121,23 @@ global.http = require("http");
 global.net = require("net");
 global.url = require("url");
 global.ws = require("ws");
-//Other utilities
+//Other built in utilities
 global.forge = require("node-forge");
 global.zlib = require("zlib");
 global.fs = require("fs");
-//Custom modules
+//Other modules
+global.publicsuffix = require("./Pulic Suffix/publicsuffixlist")
+global.punycode = require("./Pulic Suffix/punycode.js");
 global.agent = require("./Violentproxy/Violentagent");
 global.tls = require("./Violentproxy/Violenttls");
-//Public suffix
-const publicSuffixList = require("./Pulic Suffix/publicsuffixlist");
-publicSuffixList.parse(
-    global.fs.readFileSync("./Pulic Suffix/public_suffix_list.dat.txt", "utf8"),
-    require("./Pulic Suffix/punycode.js").toASCII,
-);
-/**
- * Get a domain while considering public suffix.
- * @function
- * @param {string} host - The raw host name.
- * @return {string} The domain.
- */
-global.toDomain = (host) => {
-
-};
-
 //Load main code
 global.engine = require("./Violentproxy/Violentengine");
+
+//Initialize public suffix list
+global.publicsuffix.parse(
+    global.fs.readFileSync("./Pulic Suffix/public_suffix_list.dat.txt", "utf8"),
+    punycode.toASCII,
+);
 //Start the proxy server
 global.log("INFO", "Starting Violentproxy...");
 global.engine.start(useTLS);
