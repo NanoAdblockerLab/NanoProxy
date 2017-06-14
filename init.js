@@ -1,4 +1,4 @@
-//Initialization script, all global variables are defined here
+//Initialization script, load and initialize all modules, all global variables are defined here
 "use strict";
 
 /**
@@ -128,6 +128,21 @@ global.fs = require("fs");
 //Custom modules
 global.agent = require("./Violentproxy/Violentagent");
 global.tls = require("./Violentproxy/Violenttls");
+//Public suffix
+const publicSuffixList = require("./Pulic Suffix/publicsuffixlist");
+publicSuffixList.parse(
+    global.fs.readFileSync("./Pulic Suffix/public_suffix_list.dat.txt", "utf8"),
+    require("./Pulic Suffix/punycode.js").toASCII,
+);
+/**
+ * Get a domain while considering public suffix.
+ * @function
+ * @param {string} host - The raw host name.
+ * @return {string} The domain.
+ */
+global.toDomain = (host) => {
+
+};
 
 //Load main code
 global.engine = require("./Violentproxy/Violentengine");
