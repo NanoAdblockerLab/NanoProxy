@@ -13,6 +13,15 @@ const { https, http, net, url, ws } = global;
 const { agent, zlib, tls } = global;
 
 /**
+ * Get a unique ID, it will be a sequential integer.
+ * @function
+ * @return {integer} The unique ID.
+ */
+const uid = (() => {
+    let counter = 0;
+    return () => counter++;
+})();
+/**
  * Get MIME type from header.
  * @function
  * @param {string} [str=""] - The encoding related header entry.
@@ -101,7 +110,8 @@ let requestEngine = (localReq, localRes) => {
             global.log("WARNING", "Received a GET request with a payload.");
         }
         //Patch the request
-        exports.onRequest(localReq.headers["referer"], localReq.url, payload, localReq.headers, (decision, payload) => {
+        const id = uid();
+        exports.onRequest(localReq.headers["referer"], localReq.url, payload, localReq.headers, id, (decision, payload) => {
             //Further process headers so response from remote server can be parsed
             localReq.headers["accept-encoding"] = "gzip, deflate";
             switch (decision.result) {
@@ -164,16 +174,16 @@ let requestEngine = (localReq, localRes) => {
                                     global.log("WARNING", `Could not parse server response: ${err.message}`);
                                     localRes.destroy();
                                 } else {
-                                    requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, result);
+                                    requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, result, id);
                                 }
                             });
                         } else {
                             //Assume identity
-                            requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, data);
+                            requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, true, data, id);
                         }
                     } else {
                         //Not text
-                        requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, false, data);
+                        requestEngine.finalize(localRes, remoteRes, localReq.headers["referer"], localReq.url, false, data, id);
                     }
                 });
                 remoteRes.on("error", (err) => {
@@ -211,8 +221,9 @@ let requestEngine = (localReq, localRes) => {
  * @param {string} url - The request URL.
  * @param {boolean} isText - Whether the response data is text.
  * @param {Any} responseData - The response data.
+ * @param {integer} id - The unique ID of the request.
  */
-requestEngine.finalize = (localRes, remoteRes, referer, url, isText, responseData) => {
+requestEngine.finalize = (localRes, remoteRes, referer, url, isText, responseData, id) => {
     const onDone = () => {
         //Update content length
         remoteRes.headers["content-length"] = Buffer.byteLength(responseData);
@@ -224,12 +235,12 @@ requestEngine.finalize = (localRes, remoteRes, referer, url, isText, responseDat
         localRes.end();
     };
     if (isText) {
-        exports.onTextResponse(referer, url, responseData.toString(), remoteRes.headers, (patchedData) => {
+        exports.onTextResponse(referer, url, responseData.toString(), remoteRes.headers, id, (patchedData) => {
             responseData = patchedData;
             onDone();
         });
     } else {
-        exports.onOtherResponse(referer, url, responseData, remoteRes.headers, (patchedData) => {
+        exports.onOtherResponse(referer, url, responseData, remoteRes.headers, id, (patchedData) => {
             responseData = patchedData;
             onDone();
         });
@@ -331,7 +342,8 @@ let connectEngine = (() => {
         const host = parts.join(":");
         localSocket.pause();
         //See what I need to do
-        exports.onConnect(`${host}:${port}`, (decision) => {
+        const id = uid();
+        exports.onConnect(`${host}:${port}`, id, (decision) => {
             switch (decision.result) {
                 case global.RequestDecision.Allow:
                     //Do nothing here, process it normally
@@ -486,15 +498,18 @@ exports.start = (useTLS = false) => {
  * @param {Buffer} payload - The raw POST request payload, since I can't make assumptions on what the server likes, I cannot have
  ** generic handle to beautify this.
  * @param {Header} headers - The headers object as reference, changes to it will be reflected.
+ * @param {integer} id - The unique ID of this request. This can be used to associate later events of the same request. CONNECT request
+ ** and its associated REQUEST request counts as two different requests.
  * @param {Function} callback - The function to call when a decision is made, the patcher can be either synchronous or asynchronous.
  ** @param {RequestDecision} result - The decision.
  ** @param {Buffer|string} payload - The patched payload. If you changed it, you are also responsible in updating related headers.
  */
-exports.onRequest = (source, destination, payload, headers, callback) => {
+exports.onRequest = (source, destination, payload, headers, id, callback) => {
     //These parameters are not used
     void source;
     void destination;
     void headers;
+    void id;
     //This is just an example
     callback({
         result: global.RequestDecision.Allow,
@@ -506,9 +521,10 @@ exports.onRequest = (source, destination, payload, headers, callback) => {
  * @param {string} destination - The destination host and port.
  * @param {Function} callback - Refer to exports.onRequest() for more information.
  */
-exports.onConnect = (destination, callback) => {
+exports.onConnect = (destination, id, callback) => {
     //These parameters are not used
     void destination;
+    void id;
     //This is just an example
     callback({
         result: global.RequestDecision.Allow,
@@ -525,11 +541,12 @@ exports.onTextResponse = (() => {
     //Precompile RegExp
     const headMatcher = /(<head[^>]*>)/i;
     //Return closure function
-    return (source, destination, text, headers, callback) => {
+    return (source, destination, text, headers, id, callback) => {
         //These parameters are not used
         void source;
         void destination;
         void headers;
+        void id;
         //This is just an example
         callback(text.replace(headMatcher, `$1<script>console.log("Hello from Violentproxy :)")</script>`));
     };
@@ -539,11 +556,12 @@ exports.onTextResponse = (() => {
  * @var {Function}
  * @param {Buffer} data - The response data. It could be still encoded, don't change it unless you plan to replace it.
  */
-exports.onOtherResponse = (source, destination, data, headers, callback) => {
+exports.onOtherResponse = (source, destination, data, headers, id, callback) => {
     //These parameters are not used
     void source;
     void destination;
     void headers;
+    void id;
     //This is just an example
     callback(data);
 };
