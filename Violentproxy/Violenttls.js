@@ -456,7 +456,7 @@ const toDomain = (() => {
             if (dots > 3) {
                 break;
             }
-            index = host.indexOf(".", index);
+            index = host.indexOf(".", index + 1);
         }
         if (dots === 3 && isIPv4.test(host)) {
             //Composed of only digits and dot, and has 3 dots, this is an IPv4 address
