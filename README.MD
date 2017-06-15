@@ -11,6 +11,7 @@ It is in very early development, it may or may not start, if you want to try it 
 ```Bash
 npm install
 npm run-script debug
+# You can access the console in chrome://inspect/#devices
 
 curl -x localhost:12345 https://example.com -k
 ```
