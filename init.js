@@ -195,7 +195,7 @@ global.log = (type, ...data) => {
         console.log(...data);
     }
 };
-//Packages are loaded to global scope so my modules can share them
+//Packages are loaded to global scope so they are easier to manage
 global.log("INFO", "Loading modules...");
 //Network utilities
 global.https = require("https");
