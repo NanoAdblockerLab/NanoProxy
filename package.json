@@ -1,7 +1,7 @@
 {
   "author": "jspenguin2017",
   "bugs": {
-    "url": "https://github.com/Violentproxy/Violentproxy/issues"
+    "url": "https://github.com/EinZinY/Core/issues"
   },
   "dependencies": {
     "node-forge": ">=0.7.1",
@@ -11,11 +11,11 @@
   "engines": {
     "node": ">=8.1.0"
   },
-  "homepage": "https://github.com/Violentproxy/Violentproxy",
+  "homepage": "https://github.com/EinZinY/Core",
   "license": "GPL-3.0",
   "main": "init.js",
-  "name": "violentproxy",
-  "repository": "https://github.com/Violentproxy/Violentproxy",
+  "name": "einziny-core",
+  "repository": "https://github.com/EinZinY/Core",
   "scripts": {
     "debug": "node --inspect init.js",
     "start": "node init.js"

@@ -1,4 +1,4 @@
-//Agents manager for Violentproxy
+//Agents manager for EinZinY
 "use strict";
 
 /**

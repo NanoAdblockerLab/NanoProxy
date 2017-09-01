@@ -1,20 +1,16 @@
-# Violentproxy [![Dependencies](https://david-dm.org/Violentproxy/Violentproxy.svg)](https://david-dm.org/Violentproxy/Violentproxy)
+# EinZinY Core [![Dependencies](https://david-dm.org/EinZinY/Core.svg)](https://david-dm.org/EinZinY/Core)
 
-Named after [Violentmonkey](https://github.com/violentmonkey/violentmonkey), 
-Violentproxy is a monkey-in-the-middle proxy server that aims at doing the same monkey things but in a different way, 
-it has different restrictions and can possibly work together with Violentmonkey and uBlock Origin to create a 
-better browsing experience. 
-
-Violentproxy is not able to proxy request between the local network, it also needs ports 12345 and 12346. 
+EinZinY is not able to proxy request between the local network, it also needs ports 12345 and 12346. 
 
 It is in very early development, it may or may not start, if you want to try it out: 
 ```Bash
 npm install
 npm run-script debug
-# You can access the console in chrome://inspect/#devices
 
 curl -x localhost:12345 https://example.com -k
 ```
+
+You can access to the server console in `chrome://inspect/#devices`. 
 
 Please open an issue if there is something you want me to know. 
 

@@ -1,4 +1,4 @@
-//TLS engine for Violentproxy
+//TLS engine for EinZinY
 //Note that "SSL" often means "SSL/TLS", OpenSSL fully supports TLS related calculations and functions
 //SSL is no longer used and its support is dropped by modern browsers
 "use strict";
@@ -16,7 +16,7 @@ const { forge, fs } = global;
  * which will be like "+.example.com".
  * @const {String}
  */
-const certFolder = "./Violentproxy/Violentcert";
+const certFolder = "./EinZinY/cert";
 
 /**
  * The certificate authority root certificate. Will be initialized when exports.init() is called.
@@ -105,11 +105,11 @@ const CAsbj = [
     },
     {
         shortName: "O", //Organization or company
-        value: "Violentproxy",
+        value: "EinZinY",
     },
     {
         shortName: "OU", //Organizational unit or department
-        value: "Violenttls Engine",
+        value: "EinZinY Proxy",
     },
     {
         shortName: "ST", //State or province
@@ -117,7 +117,7 @@ const CAsbj = [
     },
     {
         shortName: "CN", //Common Name, can be anything
-        value: "Violentca",
+        value: "EinZinY CA",
     },
     { //Optional
         shortName: "L", //City or town
@@ -192,11 +192,11 @@ const serverSbj = [
     },
     {
         shortName: "O", //Organization, company, etc.
-        value: "Violentproxy",
+        value: "EinZinY",
     },
     {
         shortName: "OU", //Organizational Unit, like department
-        value: "Violenttls Engine",
+        value: "EinZinY Proxy",
     },
     {
         shortName: "ST", //State, province, etc.
@@ -204,7 +204,7 @@ const serverSbj = [
     },
     {
         shortName: "CN", //Connon Name, can be anything
-        value: "Violentserver",
+        value: "EinZinY Server",
     },
     { //Optional
         shortName: "L", //City, town, etc.
@@ -297,7 +297,7 @@ const genCA = (callback) => {
         let done = 0;
         const onDone = () => {
             global.log("NOTICE", "Certificate authority root certificate is generated, don't forget to install it.");
-            global.log("NOTICE", `The certificate is located at ${certFolder}/Violentca.crt`);
+            global.log("NOTICE", `The certificate is located at ${certFolder}/EinZinY.crt`);
             callback();
         };
         const onTick = (err) => {
@@ -309,9 +309,9 @@ const genCA = (callback) => {
             }
         };
         //I'll write all 3 files in parallel
-        fs.writeFile(`${certFolder}/Violentca.crt`, forge.pki.certificateToPem(CAcert.cert), onTick);
-        fs.writeFile(`${certFolder}/Violentca.public`, forge.pki.publicKeyToPem(keypair.publicKey), onTick);
-        fs.writeFile(`${certFolder}/Violentca.private`, forge.pki.privateKeyToPem(CAcert.key), onTick);
+        fs.writeFile(`${certFolder}/EinZinY.crt`, forge.pki.certificateToPem(CAcert.cert), onTick);
+        fs.writeFile(`${certFolder}/EinZinY.public`, forge.pki.publicKeyToPem(keypair.publicKey), onTick);
+        fs.writeFile(`${certFolder}/EinZinY.private`, forge.pki.privateKeyToPem(CAcert.key), onTick);
     });
 };
 /**
@@ -322,13 +322,13 @@ const genCA = (callback) => {
  */
 const loadCA = (callback) => {
     //Variable naming is safe since this function will abort on the first error
-    fs.readFile(`${certFolder}/Violentca.crt`, (err, data) => {
+    fs.readFile(`${certFolder}/EinZinY.crt`, (err, data) => {
         if (err) {
             callback(false);
             return;
         }
         CAcert.cert = forge.pki.certificateFromPem(data);
-        fs.readFile(`${certFolder}/Violentca.private`, (err, data) => {
+        fs.readFile(`${certFolder}/EinZinY.private`, (err, data) => {
             if (err) {
                 callback(false);
                 return;
@@ -390,9 +390,9 @@ const genCert = (domains, ips, cacheKey, callback) => {
         };
         fs.mkdir(path, () => {
             //Ignore error since the directory may already exist, I'll overwrite the content in that case
-            fs.writeFile(`${path}/Violentcert.crt`, cert, onTick);
-            fs.writeFile(`${path}/Violentcert.public`, forge.pki.publicKeyToPem(keypair.publicKey), onTick);
-            fs.writeFile(`${path}/Violentcert.private`, key, onTick);
+            fs.writeFile(`${path}/EinZinY.crt`, cert, onTick);
+            fs.writeFile(`${path}/EinZinY.public`, forge.pki.publicKeyToPem(keypair.publicKey), onTick);
+            fs.writeFile(`${path}/EinZinY.private`, key, onTick);
         });
     });
 };
@@ -409,12 +409,12 @@ const loadCert = (cacheKey, callback) => {
     const path = `${certFolder}/${cacheKey}`;
     //Read the files, this is different than loading root certificate, since https.createServer expects
     //PEM format and it doesn't need the public key
-    fs.readFile(`${path}/Violentcert.crt`, (err, cert) => {
+    fs.readFile(`${path}/EinZinY.crt`, (err, cert) => {
         if (err) {
             callback(false);
             return;
         }
-        fs.readFile(`${path}/Violentcert.private`, (err, key) => {
+        fs.readFile(`${path}/EinZinY.private`, (err, key) => {
             if (err) {
                 callback(false);
                 return;
@@ -481,7 +481,7 @@ const toDomain = (() => {
 /**
  * Initialize certificate authority, don't call sign() before receiving callback from this function.
  * @function
- * @param {Funciton} callback - The function to call when Violenttls is ready.
+ * @param {Funciton} callback - The function to call when this module is ready.
  */
 exports.init = (callback) => {
     const onEnd = () => {

@@ -1,4 +1,4 @@
-//Core engine for Violentproxy
+//Core engine for EinZinY
 "use strict";
 
 /**
@@ -501,7 +501,7 @@ exports.start = (useTLS = false) => {
         global.log("INFO", "Loading certificate authority root certificate...");
         tls.init(() => {
             server = https.createServer(global.localCert); //Still handle REQUEST the same way
-            global.log("INFO", `Violentproxy started on port 12345, encryption is enabled.`);
+            global.log("INFO", `EinZinY started on port 12345, encryption is enabled.`);
             onDone();
         });
     } else {
@@ -510,8 +510,8 @@ exports.start = (useTLS = false) => {
         global.log("INFO", "Loading certificate authority root certificate...");
         tls.init(() => {
             server = http.createServer();
-            global.log("INFO", `Violentproxy started on port 12345, encryption is disabled.`);
-            global.log("WARNING", "The connection between your user agent and Violentproxy is not encrypted.");
+            global.log("INFO", `EinZinY started on port 12345, encryption is disabled.`);
+            global.log("WARNING", "The connection between your user agent and EinZinY is not encrypted.");
             onDone();
         });
     }
@@ -519,9 +519,9 @@ exports.start = (useTLS = false) => {
 
 //Handle server crash
 process.on("uncaughtException", (err) => {
-    global.log("ERROR", "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    global.log("ERROR", "!!!!! Violentproxy encountered a fatal error and is about to crash !!!!!");
-    global.log("ERROR", "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    global.log("ERROR", "If you believe this is caused by a bug, please inform us at https://github.com/Violentproxy/Violentproxy/issues");
+    global.log("ERROR", "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    global.log("ERROR", "!!!!! EinZinY encountered a fatal error and is about to crash !!!!!");
+    global.log("ERROR", "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    global.log("ERROR", "If you believe this is caused by a bug, please inform us at https://github.com/EinZinY/Core/issues");
     throw err;
 });

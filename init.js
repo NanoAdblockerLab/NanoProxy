@@ -34,7 +34,7 @@ global.proxyIPs = ["127.0.0.1"];
 global.localCert = null;
 
 //=====Requests Handlers=====
-//Replace these event handlers to change the behavior of Violentproxy
+//Replace these event handlers to change the behavior of EinZinY
 /**
  * REQUEST Requests patcher.
  * @var {Function}
@@ -89,7 +89,7 @@ global.onTextResponse = (() => {
         void headers;
         void id;
         //This is just an example
-        callback(text.replace(headMatcher, `$1<script>console.log("Hello from Violentproxy :)")</script>`));
+        callback(text.replace(headMatcher, `$1<script>console.log("Hello from EinZinY :)")</script>`));
     };
 })();
 /**
@@ -210,15 +210,15 @@ global.fs = require("fs");
 //Other modules
 global.publicsuffix = require("./Pulic Suffix/publicsuffixlist")
 global.punycode = require("./Pulic Suffix/punycode.js");
-global.agent = require("./Violentproxy/Violentagent");
-global.tls = require("./Violentproxy/Violenttls");
+global.agent = require("./EinZinY/agent");
+global.tls = require("./EinZinY/tls");
 //Load main code
-global.engine = require("./Violentproxy/Violentengine");
+global.engine = require("./EinZinY/engine");
 //Initialize public suffix list
 global.publicsuffix.parse(
     global.fs.readFileSync("./Pulic Suffix/public_suffix_list.dat.txt", "utf8"),
     punycode.toASCII,
 );
 //Start the proxy server
-global.log("INFO", "Starting Violentproxy...");
+global.log("INFO", "Starting EinZinY...");
 global.engine.start(useTLS);
