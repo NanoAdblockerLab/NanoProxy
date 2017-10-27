@@ -1,4 +1,4 @@
-# EinZinY Core [![Dependencies](https://david-dm.org/EinZinY/Core.svg)](https://david-dm.org/EinZinY/Core)
+# EinZinY [![Dependencies](https://david-dm.org/AdBlockProtector2/EinZinY.svg)](https://david-dm.org/AdBlockProtector2/EinZinY)
 
 Experimental explicit proxy for content tampering
 
