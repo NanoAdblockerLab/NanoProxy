@@ -1,6 +1,6 @@
 # EinZinY Core [![Dependencies](https://david-dm.org/EinZinY/Core.svg)](https://david-dm.org/EinZinY/Core)
 
-A free and open source implementation of an explicit proxy for content tampering
+Experimental explicit proxy for content tampering
 
 EinZinY is not able to proxy request between the local network, it also needs ports 12345 and 12346. 
 
