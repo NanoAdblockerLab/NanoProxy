@@ -203,7 +203,7 @@ global.http = require("http");
 global.net = require("net");
 global.url = require("url");
 global.ws = require("ws");
-//Other built in utilities
+//Other utilities
 global.forge = require("node-forge");
 global.zlib = require("zlib");
 global.fs = require("fs");
