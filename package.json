@@ -1,21 +1,21 @@
 {
   "author": "jspenguin2017",
   "bugs": {
-    "url": "https://github.com/EinZinY/Core/issues"
+    "url": "https://github.com/AdBlockProtector2/EinZinY/issues"
   },
   "dependencies": {
     "node-forge": ">=0.7.1",
     "ws": ">=3.0.0"
   },
-  "description": "A free and open source implementation of an explicit proxy for content tampering.",
+  "description": "An experimental explicit proxy for content tampering.",
   "engines": {
     "node": ">=8.1.0"
   },
-  "homepage": "https://github.com/EinZinY/Core",
+  "homepage": "https://github.com/AdBlockProtector2/EinZinY",
   "license": "GPL-3.0",
   "main": "init.js",
   "name": "einziny-core",
-  "repository": "https://github.com/EinZinY/Core",
+  "repository": "https://github.com/AdBlockProtector2/EinZinY",
   "scripts": {
     "debug": "node --inspect init.js",
     "start": "node init.js"
