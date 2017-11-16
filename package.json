@@ -14,7 +14,7 @@
   "homepage": "https://github.com/AdBlockProtector2/EinZinY",
   "license": "GPL-3.0",
   "main": "init.js",
-  "name": "einziny-core",
+  "name": "einziny",
   "repository": "https://github.com/AdBlockProtector2/EinZinY",
   "scripts": {
     "debug": "node --inspect init.js",
