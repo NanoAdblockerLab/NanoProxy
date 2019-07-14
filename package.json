@@ -4,7 +4,7 @@
     "url": "https://github.com/AdBlockProtector2/EinZinY/issues"
   },
   "dependencies": {
-    "node-forge": "^0.7.6",
+    "node-forge": "^0.8.0",
     "ws": "^3.3.3"
   },
   "description": "An experimental explicit proxy for content tampering.",
