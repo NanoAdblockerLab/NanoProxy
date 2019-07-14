@@ -4,12 +4,12 @@
     "url": "https://github.com/AdBlockProtector2/EinZinY/issues"
   },
   "dependencies": {
-    "node-forge": ">=0.7.1",
-    "ws": ">=3.3.2"
+    "node-forge": "^0.7.6",
+    "ws": "^3.3.3"
   },
   "description": "An experimental explicit proxy for content tampering.",
   "engines": {
-    "node": ">=8.1.0"
+    "node": "^10.16.0"
   },
   "homepage": "https://github.com/AdBlockProtector2/EinZinY",
   "license": "GPL-3.0",
