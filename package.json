@@ -5,7 +5,7 @@
   },
   "dependencies": {
     "node-forge": "0.8.5",
-    "ws": "7.1.0"
+    "ws": "7.1.1"
   },
   "description": "An experimental explicit proxy for content tampering.",
   "engines": {
@@ -20,5 +20,5 @@
     "debug": "node --inspect init.js",
     "start": "node init.js"
   },
-  "version": "0.1.1"
+  "version": "0.1.2"
 }
