@@ -9,7 +9,7 @@
   },
   "description": "An experimental explicit proxy for content tampering.",
   "engines": {
-    "node": "10.18.0"
+    "node": "10.18.1"
   },
   "homepage": "https://github.com/AdBlockProtector2/EinZinY",
   "license": "GPL-3.0",
@@ -20,5 +20,5 @@
     "debug": "node --inspect init.js",
     "start": "node init.js"
   },
-  "version": "0.1.12"
+  "version": "0.1.13"
 }
